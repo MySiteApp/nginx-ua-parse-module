@@ -7,6 +7,8 @@
 #include <ngx_core.h>
 #include <ngx_http.h>
 
+#include "cJSON/cJSON.h"
+
 typedef struct {
     
     ngx_array_t *devices;
@@ -84,8 +86,27 @@ static ngx_int_t ngx_http_ua_parse_agent_variable(ngx_http_request_t *r,
 static char *
 ngx_http_ua_parse_list(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 {
-    ngx_log_error(NGX_LOG_ERR, cf->log, 0, "Sup?", );
+//     ngx_log_error(NGX_LOG_ERR, cf->log, 0, "Sup?", );
+    ngx_fd_t    fd;
+    ngx_str_t   *value;
+    u_char      *regexFile;
+    value = cf->args->elts;
+    regexFile = (u_char*)value[1].data;
+    
+    fd = ngx_open_file(regexFile, NGX_FILE_RDONLY, NGX_FILE_OPEN, 0);
+    if (fd == NGX_INVALID_FILE) {
+        ngx_log_error(NGX_LOG_CRIT, cf->log, ngx_errno,
+                      ngx_open_file_n " \"%s\" failed", regexFile);
+    }
     return NGX_CONF_OK;
+failed:
+    if (fd != NGX_INVALID_FILE) {
+        if (ngx_close_file(fd) == NGX_FILE_ERROR) {
+            ngx_log_error(NGX_LOG_ALERT, cf->log, ngx_errno,
+                          ngx_close_file_n " \"%s\" failed", regexFile);
+        }
+    }
+    return NGX_CONF_ERROR;
 }
 
 static ngx_int_t
