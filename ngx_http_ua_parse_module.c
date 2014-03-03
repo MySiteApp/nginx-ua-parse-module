@@ -383,8 +383,9 @@ ngx_http_ua_parse_list(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
         goto failed;
     }
     
-    // TODO: validate we read it all
-    ngx_read_fd(fd, buf, len);
+    if (ngx_read_fd(fd, buf, len) == -1) {
+    	goto failed;
+    }
     
     
     root = cJSON_Parse(buf);
