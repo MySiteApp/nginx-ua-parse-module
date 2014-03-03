@@ -76,7 +76,7 @@ ngx_module_t ngx_http_ua_parse_module = {
 
 #define NGX_UA_PARSE_DEVICE_FAMILY 0
 #define NGX_UA_PARSE_OS_FAMILY 1
-#define NGX_UA_PARSE_AGENT_FAMILY 2
+#define NGX_UA_PARSE_BROWSER_FAMILY 2
 
 static ngx_http_variable_t ngx_http_ua_parse_vars[] = {
     { ngx_string("ua_parse_device"), NULL,
@@ -87,9 +87,9 @@ static ngx_http_variable_t ngx_http_ua_parse_vars[] = {
 	  ngx_http_ua_parse_variable,
 	  NGX_UA_PARSE_OS_FAMILY, 0, 0 },
 
-    { ngx_string("ua_parse_agent"), NULL,
+    { ngx_string("ua_parse_browser"), NULL,
       ngx_http_ua_parse_variable,
-      NGX_UA_PARSE_AGENT_FAMILY, 0, 0 },
+      NGX_UA_PARSE_BROWSER_FAMILY, 0, 0 },
       
     { ngx_null_string, NULL, NULL, 0, 0, 0 }
 };
@@ -139,7 +139,7 @@ static ngx_int_t ngx_http_ua_parse_variable(ngx_http_request_t *r,
     case NGX_UA_PARSE_OS_FAMILY:
     	lst = upcf->os;
     	break;
-    case NGX_UA_PARSE_AGENT_FAMILY:
+    case NGX_UA_PARSE_BROWSER_FAMILY:
     	lst = upcf->browsers;
     	break;
     default:
@@ -166,6 +166,7 @@ static ngx_int_t ngx_http_ua_parse_variable(ngx_http_request_t *r,
         str.len = captures[3] - captures[2];
 
         if (cur->replacement) {
+        	ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "With replacement");
         	// Copy the string to the foundStr place...
         	foundStr = ngx_alloc((str.len + 1) * sizeof(u_char), r->connection->log);
         	ngx_memzero(foundStr, (str.len + 1) * sizeof(u_char)); // Make sure there will be '\0' in the end
@@ -176,10 +177,11 @@ static ngx_int_t ngx_http_ua_parse_variable(ngx_http_request_t *r,
         	ngx_memzero(p, 100 * sizeof(u_char));
         	p = ngx_sprintf(p, (const char *)cur->replacement->data, foundStr);
         	*p = '\0';
+        	str.len = p - str.data;
         }
 
         v->data = str.data;
-		v->len = ngx_strlen(str.data);
+		v->len = str.len;
 		v->valid = 1;
 		v->no_cacheable = 0;
 		v->not_found = 0;
@@ -288,10 +290,9 @@ ngx_http_ua_parse_list(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     // OS
     // ngx_http_ua_parse_elem_t
     upcf->os = ngx_http_ua_parse_load_from_json(cf, cJSON_GetObjectItem(root, "os"));
-//    upcf->devices = ngx_http_ua_parse_load_from_json(cf, cJSON_GetObjectItem(root, "devices"));
-//    upcf->browsers = ngx_http_ua_parse_load_from_json(cf, cJSON_GetObjectItem(root, "browsers"));
+    upcf->devices = ngx_http_ua_parse_load_from_json(cf, cJSON_GetObjectItem(root, "devices"));
+    upcf->browsers = ngx_http_ua_parse_load_from_json(cf, cJSON_GetObjectItem(root, "browsers"));
 
-    ngx_log_error(NGX_LOG_ERR, cf->log, 0, "All ok!");
     rc = NGX_CONF_OK;
     
 failed:

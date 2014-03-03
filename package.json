@@ -1,0 +1,11 @@
+{
+  "name": "nginx-ua-parse-module-regexes-generator",
+  "version": "0.1.0",
+  "author": "Kobi Meirson <kobi@brow.si>",
+  "description": "Generates json file for nginx-ua-parse-module by using ua-parser's regexes.yaml file from GitHub",
+  "license": "MIT",
+  "dependencies": {
+    "js-yaml": "~3.0.2",
+    "request": "~2.34.0"
+  }
+}
