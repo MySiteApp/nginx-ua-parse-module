@@ -62,6 +62,6 @@ request('https://raw.github.com/tobie/ua-parser/master/regexes.yaml', function (
 
     // Writing it out
     var outputFile = formatFilename();
-    fs.writeFileSync(outputFile, JSON.stringify(out));
+    fs.writeFileSync(outputFile, JSON.stringify(out).replace(/\\\\/g, '\\\\\\'));
     console.log("Don't forget to copy", outputFile, "and use it with uaparse_list directive");
 });
