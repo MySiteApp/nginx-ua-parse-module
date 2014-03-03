@@ -253,6 +253,9 @@ static ngx_int_t ngx_http_ua_parse_variable(ngx_http_request_t *r,
     for (i = 0; i < lst->nelts; i++) {
         cur = &ptr[i];
         n = (cur->rgc.captures + 1) * 3;
+        if (n > 20) {
+        	n = 15; // 4+1 * 3
+        }
         captures = ngx_palloc(r->pool, n * sizeof(int));
         rc = ngx_regex_exec(cur->rgc.regex, &r->headers_in.user_agent->value, captures, n);
         if (rc < 0) {
