@@ -9,21 +9,31 @@ Idea came because [we at Brow.si](https://brow.si) searched for efficient way to
 ## Installation
 
     $ ./configure --add-module=/path/to/nginx-ua-parse-module
+    $ make && make install
 
+## Generating regexes.json (requires [Node.js](http://nodejs.org))
+
+    $ npm install
+    $ node generate-regexes.js
 
 ## Usage
 ```
-    server {
-       ...
-       location ... {
-           ...
-           log_format userinfo '$remote_addr of kind $ua_parse_device_kind ($ua_parse_device running $ua_parse_os) with $ua_parse_browser';
-           access_log	logs/userinfo.log userinfo;
-           ...
-       }
-       ...
+    http {
+        ...
+        log_format userinfo '$remote_addr of kind $ua_parse_device_kind ($ua_parse_device running $ua_parse_os) with $ua_parse_browser';
+        uaparse_list /path/to/regexes.json;
+        ...
+        server {
+            ...
+            location ... {
+                ...
+                access_log	logs/userinfo.log userinfo;
+                ...
+            }
+            ...
+        }
     }
 ```
 
 ## Credits
-* [`tobie/ua-parser`](https://github.com/tobie/ua-parser) for the YAML
+* [`tobie/ua-parser`](https://github.com/tobie/ua-parser) for the regexes YAML
