@@ -190,11 +190,13 @@ static ngx_int_t ngx_http_ua_parse_kind_variable(ngx_http_request_t *r,
 	if (os.valid == 1) {
 		if (ngx_strstr(os.data, "iOS") != NULL) {
 			ngx_http_ua_parse_variable(r, &device, NGX_UA_PARSE_DEVICE_FAMILY);
-			// In ios, we check the device
-			if (ngx_regex_exec(mobileKind, &device, NULL, 0) >= 0) { // We can use 'device' as ngx_string_t, as ngx_http_variable_value_t shares ->len and ->data
-				str.data = (u_char*)"mobile";
-			} else if (ngx_regex_exec(tabletKind, &device, NULL, 0) >= 0) {
-				str.data = (u_char*)"tablet";
+			if (device.valid == 1) {
+				// In ios, we check the device
+				if (ngx_regex_exec(mobileKind, &device, NULL, 0) >= 0) { // We can use 'device' as ngx_string_t, as ngx_http_variable_value_t shares ->len and ->data
+					str.data = (u_char*)"mobile";
+				} else if (ngx_regex_exec(tabletKind, &device, NULL, 0) >= 0) {
+					str.data = (u_char*)"tablet";
+				}
 			}
 		} else if (ngx_strstr(os.data, "Android") != NULL) {
 			// In android - we check the UA for "mobile"
