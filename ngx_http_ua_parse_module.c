@@ -18,6 +18,9 @@ typedef struct {
     ngx_array_t *devices;
     ngx_array_t *browsers;
     ngx_array_t *os;
+    // Kind regexes
+    ngx_regex_t tabletKindRegex;
+    ngx_regex_t mobileKindRegex;
 } ngx_http_ua_parse_conf_t;
 
 static ngx_int_t ngx_http_ua_parse_add_variables(ngx_conf_t *cf);
@@ -27,8 +30,12 @@ static char *ngx_http_ua_parse_list(ngx_conf_t *cf, ngx_command_t *cmd,
     
 static ngx_int_t ngx_http_ua_parse_variable(ngx_http_request_t *r,
     ngx_http_variable_value_t *v, uintptr_t data);
+
+static ngx_int_t ngx_http_ua_parse_kind_variable(ngx_http_request_t *r,
+    ngx_http_variable_value_t *v, uintptr_t data);
     
 static void * ngx_http_ua_parse_create_conf(ngx_conf_t *cf);
+static char * ngx_http_ua_parse_init_conf(ngx_conf_t *cf, void *conf);
 static void ngx_http_ua_parse_cleanup(void *data);
 
 static ngx_array_t * ngx_http_ua_parse_load_from_json(ngx_conf_t *cf, cJSON *current);
@@ -49,7 +56,7 @@ static ngx_http_module_t ngx_http_ua_parse_module_ctx = {
     NULL,                               /* postconfiguration */
  
     ngx_http_ua_parse_create_conf,      /* create main configuration */
-    NULL,                               /* init main configuration */
+    ngx_http_ua_parse_init_conf,        /* init main configuration */
  
     NULL,                               /* create server configuration */
     NULL,                               /* merge server configuration */
@@ -91,9 +98,14 @@ static ngx_http_variable_t ngx_http_ua_parse_vars[] = {
       ngx_http_ua_parse_variable,
       NGX_UA_PARSE_BROWSER_FAMILY, 0, 0 },
       
+    { ngx_string("ua_parse_device_kind"), NULL,
+      ngx_http_ua_parse_kind_variable,
+	  0, 0, 0 },
+
     { ngx_null_string, NULL, NULL, 0, 0, 0 }
 };
 
+// Create configuration
 static void *
 ngx_http_ua_parse_create_conf(ngx_conf_t *cf)
 {
@@ -116,6 +128,93 @@ ngx_http_ua_parse_create_conf(ngx_conf_t *cf)
     return conf;
 }
 
+// Init configuration
+static char *
+ngx_http_ua_parse_init_conf(ngx_conf_t *cf, void *conf)
+{
+    ngx_http_ua_parse_conf_t    *upcf = conf;
+    ngx_regex_compile_t			rgc;
+    char						*rc;
+    u_char						errstr[NGX_MAX_CONF_ERRSTR];
+
+    rc = NGX_CONF_ERROR;
+
+    // Mobile
+	rgc.pattern = (ngx_str_t)ngx_string("iphone|ipod|mobile");
+	rgc.options = NGX_REGEX_CASELESS;
+	rgc.pool = cf->pool;
+	rgc.err.len = NGX_MAX_CONF_ERRSTR;
+	rgc.err.data = errstr;
+	if (ngx_regex_compile(&rgc) != NGX_OK) {
+		ngx_log_error(NGX_LOG_ALERT, cf->log, ngx_errno,
+								  "ngx_regex_compile() \"%s\" failed", rgc.pattern.data);
+		goto failed;
+	}
+	ngx_memcpy(&upcf->mobileKindRegex, rgc.regex, sizeof(ngx_regex_t));
+
+	// Tablet
+	rgc.pattern = (ngx_str_t)ngx_string("ipad");
+	rgc.options = NGX_REGEX_CASELESS;
+	rgc.pool = cf->pool;
+	rgc.err.len = NGX_MAX_CONF_ERRSTR;
+	rgc.err.data = errstr;
+	if (ngx_regex_compile(&rgc) != NGX_OK) {
+		ngx_log_error(NGX_LOG_ALERT, cf->log, ngx_errno,
+		                          "ngx_regex_compile() \"%s\" failed", rgc.pattern.data);
+		goto failed;
+	}
+	ngx_memcpy(&upcf->tabletKindRegex, rgc.regex, sizeof(ngx_regex_t));
+
+	rc = NGX_CONF_OK;
+
+failed:
+	return rc;
+}
+
+// Kind (other/mobile/tablet)
+static ngx_int_t ngx_http_ua_parse_kind_variable(ngx_http_request_t *r,
+    ngx_http_variable_value_t *v, uintptr_t data)
+{
+	ngx_http_ua_parse_conf_t    *upcf;
+	ngx_str_t					str;
+	ngx_http_variable_value_t	device, os;
+	ngx_regex_t					*mobileKind, *tabletKind;
+
+	upcf = ngx_http_get_module_main_conf(r, ngx_http_ua_parse_module);
+	mobileKind = &upcf->mobileKindRegex;
+	tabletKind = &upcf->tabletKindRegex;
+
+	str.data = (u_char*) "other";
+
+	ngx_http_ua_parse_variable(r, &os, NGX_UA_PARSE_OS_FAMILY);
+	if (os.valid == 1) {
+		if (ngx_strstr(os.data, "iOS") != NULL) {
+			ngx_http_ua_parse_variable(r, &device, NGX_UA_PARSE_DEVICE_FAMILY);
+			// In ios, we check the device
+			if (ngx_regex_exec(mobileKind, &device, NULL, 0) >= 0) { // We can use 'device' as ngx_string_t, as ngx_http_variable_value_t shares ->len and ->data
+				str.data = (u_char*)"mobile";
+			} else if (ngx_regex_exec(tabletKind, &device, NULL, 0) >= 0) {
+				str.data = (u_char*)"tablet";
+			}
+		} else if (ngx_strstr(os.data, "Android") != NULL) {
+			// In android - we check the UA for "mobile"
+			if (ngx_regex_exec(mobileKind, &(r->headers_in.user_agent->value), NULL, 0) >= 0) {
+				str.data = (u_char*)"mobile";
+			} else {
+				str.data = (u_char*)"tablet";
+			}
+		}
+	}
+
+	v->data = str.data;
+	v->len = ngx_strlen(v->data);
+	v->valid = 1;
+	v->no_cacheable = 0;
+	v->not_found = 0;
+
+	return NGX_OK;
+}
+
 // Get family
 static ngx_int_t ngx_http_ua_parse_variable(ngx_http_request_t *r,
     ngx_http_variable_value_t *v, uintptr_t data)
@@ -127,8 +226,6 @@ static ngx_int_t ngx_http_ua_parse_variable(ngx_http_request_t *r,
     ngx_array_t					*lst;
     ngx_str_t					str;
     u_char						*p, *foundStr;
-    
-    ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "Cur UA is \"%s\"", r->headers_in.user_agent->value.data);
     
     upcf = ngx_http_get_module_main_conf(r, ngx_http_ua_parse_module);
 
@@ -151,11 +248,9 @@ static ngx_int_t ngx_http_ua_parse_variable(ngx_http_request_t *r,
     }
 
     ptr = lst->elts;
-    ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "Total of %d in array", upcf->os->nelts);
     for (i = 0; i < lst->nelts; i++) {
         cur = &ptr[i];
         n = (cur->rgc.captures + 1) * 3;
-        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "Cur n is %d (\"%s\")", n, cur->rgc.pattern.data);
         captures = ngx_palloc(r->pool, n * sizeof(int));
         rc = ngx_regex_exec(cur->rgc.regex, &r->headers_in.user_agent->value, captures, n);
         if (rc < 0) {
@@ -166,7 +261,6 @@ static ngx_int_t ngx_http_ua_parse_variable(ngx_http_request_t *r,
         str.len = captures[3] - captures[2];
 
         if (cur->replacement) {
-        	ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "With replacement");
         	// Copy the string to the foundStr place...
         	foundStr = ngx_alloc((str.len + 1) * sizeof(u_char), r->connection->log);
         	ngx_memzero(foundStr, (str.len + 1) * sizeof(u_char)); // Make sure there will be '\0' in the end
@@ -232,7 +326,6 @@ static ngx_array_t * ngx_http_ua_parse_load_from_json(ngx_conf_t *cf, cJSON *cur
 			elem->replacement->data = (u_char *)cJSON_GetObjectItem(arr, "replacement")->valuestring;
 			elem->replacement->len = ngx_strlen(elem->replacement->data);
 		}
-//		ngx_log_error(NGX_LOG_ERR, cf->log, 0, "Iterated idx %d at %d with %s (captures=%d)", i, elem->rgc, elem->rgc.pattern.data, elem->rgc.captures);
 	}
 failed:
 	return lst;
