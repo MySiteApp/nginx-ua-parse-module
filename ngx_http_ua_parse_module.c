@@ -362,7 +362,7 @@ ngx_http_ua_parse_list(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     ngx_file_info_t fi;
     off_t           size;
     char*           rc;
-    cJSON           *root;
+    cJSON           *root = NULL;
     ngx_http_ua_parse_conf_t    *upcf = conf;
 
     rc = NGX_CONF_ERROR;
