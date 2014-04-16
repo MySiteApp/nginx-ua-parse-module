@@ -23,23 +23,25 @@ typedef struct {
     ngx_regex_t mobileKindRegex;
 } ngx_http_ua_parse_conf_t;
 
+static ngx_str_t *ngx_http_ua_copy_json(cJSON *jsonSrc, ngx_conf_t *cf);
+
 static ngx_int_t ngx_http_ua_parse_add_variables(ngx_conf_t *cf);
 
 static char *ngx_http_ua_parse_list(ngx_conf_t *cf, ngx_command_t *cmd,
     void *conf);
-    
+
 static ngx_int_t ngx_http_ua_parse_variable(ngx_http_request_t *r,
     ngx_http_variable_value_t *v, uintptr_t data);
 
 static ngx_int_t ngx_http_ua_parse_kind_variable(ngx_http_request_t *r,
     ngx_http_variable_value_t *v, uintptr_t data);
-    
+
 static void * ngx_http_ua_parse_create_conf(ngx_conf_t *cf);
 static char * ngx_http_ua_parse_init_conf(ngx_conf_t *cf, void *conf);
 static void ngx_http_ua_parse_cleanup(void *data);
 
 static ngx_array_t * ngx_http_ua_parse_load_from_json(ngx_conf_t *cf, cJSON *current);
- 
+
 static ngx_command_t ngx_http_ua_parse_commands[] = {
     { ngx_string("uaparse_list"),
       NGX_HTTP_MAIN_CONF|NGX_CONF_TAKE1,
@@ -47,25 +49,25 @@ static ngx_command_t ngx_http_ua_parse_commands[] = {
       NGX_HTTP_MAIN_CONF_OFFSET,
       0,
       NULL },
- 
+
     ngx_null_command
 };
- 
+
 static ngx_http_module_t ngx_http_ua_parse_module_ctx = {
     ngx_http_ua_parse_add_variables,    /* preconfiguration */
     NULL,                               /* postconfiguration */
- 
+
     ngx_http_ua_parse_create_conf,      /* create main configuration */
     ngx_http_ua_parse_init_conf,        /* init main configuration */
- 
+
     NULL,                               /* create server configuration */
     NULL,                               /* merge server configuration */
- 
+
     NULL,                               /* create location configuration */
     NULL                                /* merge location configuration */
 };
- 
- 
+
+
 ngx_module_t ngx_http_ua_parse_module = {
     NGX_MODULE_V1,
     &ngx_http_ua_parse_module_ctx, /* module context */
@@ -97,13 +99,27 @@ static ngx_http_variable_t ngx_http_ua_parse_vars[] = {
     { ngx_string("ua_parse_browser"), NULL,
       ngx_http_ua_parse_variable,
       NGX_UA_PARSE_BROWSER_FAMILY, 0, 0 },
-      
+
     { ngx_string("ua_parse_device_kind"), NULL,
       ngx_http_ua_parse_kind_variable,
 	  0, 0, 0 },
 
     { ngx_null_string, NULL, NULL, 0, 0, 0 }
 };
+
+// Copy json attributes (just to be able to destroy the cJSON obj afterwards)
+static ngx_str_t *
+ngx_http_ua_copy_json(cJSON *jsonSrc, ngx_conf_t *cf) {
+    ngx_str_t     *str;
+    u_char        *src = (u_char*)jsonSrc->valuestring;
+
+    str = ngx_pcalloc(cf->pool, sizeof(ngx_str_t));
+    str->len = ngx_strlen(src) + 1;
+    str->data = ngx_pcalloc(cf->pool, str->len);
+    ngx_copy(str->data, src, str->len);
+
+    return str;
+}
 
 // Create configuration
 static void *
@@ -228,7 +244,7 @@ static ngx_int_t ngx_http_ua_parse_variable(ngx_http_request_t *r,
     ngx_array_t					*lst;
     ngx_str_t					str;
     u_char						*p, *foundStr;
-    
+
     upcf = ngx_http_get_module_main_conf(r, ngx_http_ua_parse_module);
     v->valid = 0;
 
@@ -315,10 +331,7 @@ static ngx_array_t * ngx_http_ua_parse_load_from_json(ngx_conf_t *cf, cJSON *cur
 		if (elem == NULL) {
 			goto failed;
 		}
-		str = ngx_calloc(sizeof(ngx_str_t), cf->log);
-
-		str->data = (u_char *)cJSON_GetObjectItem(arr, "regex")->valuestring;
-		str->len = ngx_strlen(str->data);
+        str = ngx_http_ua_copy_json(cJSON_GetObjectItem(arr, "regex"), cf);
 
 		elem->rgc = ngx_calloc(sizeof(ngx_regex_compile_t), cf->log);
 		ngx_memzero(elem->rgc, sizeof(ngx_regex_compile_t));
@@ -331,9 +344,7 @@ static ngx_array_t * ngx_http_ua_parse_load_from_json(ngx_conf_t *cf, cJSON *cur
 			goto failed;
 		}
 		if (cJSON_GetObjectItem(arr, "replacement") != NULL) {
-			elem->replacement = ngx_calloc(sizeof(ngx_str_t), cf->log);
-			elem->replacement->data = (u_char *)cJSON_GetObjectItem(arr, "replacement")->valuestring;
-			elem->replacement->len = ngx_strlen(elem->replacement->data);
+            elem->replacement = ngx_http_ua_copy_json(cJSON_GetObjectItem(arr, "replacement"), cf);
 		}
 	}
 failed:
@@ -353,43 +364,43 @@ ngx_http_ua_parse_list(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     char*           rc;
     cJSON           *root;
     ngx_http_ua_parse_conf_t    *upcf = conf;
-    
+
     rc = NGX_CONF_ERROR;
-    
+
     if (upcf->devices) {
         return "duplicate!";
     }
-    
+
     value = cf->args->elts;
     regexFile = (u_char*)value[1].data;
-    
+
     fd = ngx_open_file(regexFile, NGX_FILE_RDONLY, NGX_FILE_OPEN, 0);
     if (fd == NGX_INVALID_FILE) {
         ngx_log_error(NGX_LOG_CRIT, cf->log, ngx_errno,
                       ngx_open_file_n " \"%s\" failed", regexFile);
     }
-    
+
     if (ngx_fd_info(fd, &fi) == NGX_FILE_ERROR) {
         ngx_log_error(NGX_LOG_ALERT, cf->log, ngx_errno,
                       ngx_fd_info_n " \"%s\" failed", regexFile);
         goto failed;
     }
     size = ngx_file_size(&fi);
-    
+
     len = (off_t) 65536 > size ? (size_t) size : 65536;
-    
+
     buf = ngx_alloc(len, cf->log);
     if (buf == NULL) {
         goto failed;
     }
-    
+
     if (ngx_read_fd(fd, buf, len) == -1) {
     	goto failed;
     }
-    
-    
+
+
     root = cJSON_Parse(buf);
-    
+
     // OS
     // ngx_http_ua_parse_elem_t
     upcf->os = ngx_http_ua_parse_load_from_json(cf, cJSON_GetObjectItem(root, "os"));
@@ -397,8 +408,11 @@ ngx_http_ua_parse_list(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     upcf->browsers = ngx_http_ua_parse_load_from_json(cf, cJSON_GetObjectItem(root, "browsers"));
 
     rc = NGX_CONF_OK;
-    
+
 failed:
+    if (root != NULL) {
+        cJSON_Delete(root);
+    }
     if (fd != NGX_INVALID_FILE) {
         if (ngx_close_file(fd) == NGX_FILE_ERROR) {
             ngx_log_error(NGX_LOG_ALERT, cf->log, ngx_errno,
@@ -415,7 +429,7 @@ static ngx_int_t
 ngx_http_ua_parse_add_variables(ngx_conf_t *cf)
 {
     ngx_http_variable_t *var, *v;
-    
+
     for (v = ngx_http_ua_parse_vars; v->name.len; v++) {
         var = ngx_http_add_variable(cf, &v->name, v->flags);
         if (var == NULL) {
@@ -424,7 +438,7 @@ ngx_http_ua_parse_add_variables(ngx_conf_t *cf)
         var->get_handler = v->get_handler;
         var->data = v->data;
     }
-    
+
     return NGX_OK;
 }
 
