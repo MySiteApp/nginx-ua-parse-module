@@ -116,7 +116,7 @@ ngx_http_ua_copy_json(cJSON *jsonSrc, ngx_conf_t *cf) {
     str = ngx_pcalloc(cf->pool, sizeof(ngx_str_t));
     str->len = ngx_strlen(src) + 1;
     str->data = ngx_pcalloc(cf->pool, str->len);
-    ngx_copy(str->data, src, str->len);
+    (void)ngx_copy(str->data, src, str->len);
 
     return str;
 }
