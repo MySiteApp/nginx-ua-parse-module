@@ -23,7 +23,7 @@ function formatFilename() {
     return date.getFullYear() + "_" + month + "_" + day + "_" + OUTPUT;
 }
 
-request('https://raw.github.com/tobie/ua-parser/master/regexes.yaml', function (err, res, body) {
+request('https://raw.githubusercontent.com/ua-parser/uap-core/master/regexes.yaml', function (err, res, body) {
     if (err || res.statusCode != 200) {
         console.error("Failure downloading", err);
         return;
