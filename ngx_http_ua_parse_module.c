@@ -387,7 +387,7 @@ ngx_http_ua_parse_list(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     }
     size = ngx_file_size(&fi);
 
-    len = (off_t) 65536 > size ? (size_t) size : 65536;
+    len = (off_t) 131072 > size ? (size_t) size : 131072;
 
     buf = ngx_alloc(len, cf->log);
     if (buf == NULL) {
