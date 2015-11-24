@@ -50,6 +50,11 @@ request('https://raw.githubusercontent.com/ua-parser/uap-core/master/regexes.yam
         for (j = 0; j < cur.length; j++) {
             elem = cur[j];
             if (!elem.regex) { continue; }
+
+            // Incompatible regexes. `ngx_regex_exec` crashes with these regexes:
+            if (elem.regex.indexOf("; *(?:HTC[ _/])+([^ _/]+)(?:[") == 0) { continue; }
+            if (elem.regex.indexOf("; *(?:(?:HTC|htc)(?:_blocked)*[ _/])+([^ _/") == 0) { continue; }
+
             tempObj = {
                 regex: elem.regex
             };

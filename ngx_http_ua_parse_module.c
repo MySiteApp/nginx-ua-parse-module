@@ -274,6 +274,9 @@ static ngx_int_t ngx_http_ua_parse_variable(ngx_http_request_t *r,
         	n = 15; // 4+1 * 3
         }
         captures = ngx_palloc(r->pool, n * sizeof(int));
+        // Log incompatible regexes ("signal 20 (SIGCHLD) received" / "worker process 80910 exited on signal 11")
+        // See generate-regexes.js for a list of incompatible regexes.
+        // ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0, (const char*)cur->rgc->pattern.data);
         rc = ngx_regex_exec(cur->rgc->regex, &r->headers_in.user_agent->value, captures, n);
         if (rc < 0) {
         	continue;
