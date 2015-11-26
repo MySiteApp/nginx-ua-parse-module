@@ -62,6 +62,6 @@ request('https://raw.githubusercontent.com/ua-parser/uap-core/master/regexes.yam
 
     // Writing it out
     var outputFile = formatFilename();
-    fs.writeFileSync(outputFile, JSON.stringify(out).replace(/\\\\/g, '\\\\\\'));
+    fs.writeFileSync(outputFile, JSON.stringify(out));
     console.log("Don't forget to copy", outputFile, "and use it with uaparse_list directive");
 });
