@@ -86,6 +86,7 @@ ngx_module_t ngx_http_ua_parse_module = {
 #define NGX_UA_PARSE_DEVICE_FAMILY 0
 #define NGX_UA_PARSE_OS_FAMILY 1
 #define NGX_UA_PARSE_BROWSER_FAMILY 2
+#define NGX_UA_PARSE_BROWSER_VERSION 3
 
 static ngx_http_variable_t ngx_http_ua_parse_vars[] = {
     { ngx_string("ua_parse_device"), NULL,
@@ -99,6 +100,10 @@ static ngx_http_variable_t ngx_http_ua_parse_vars[] = {
     { ngx_string("ua_parse_browser"), NULL,
       ngx_http_ua_parse_variable,
       NGX_UA_PARSE_BROWSER_FAMILY, 0, 0 },
+
+    { ngx_string("ua_parse_browser_ver"), NULL,
+      ngx_http_ua_parse_variable,
+      NGX_UA_PARSE_BROWSER_VERSION, 0, 0 },
 
     { ngx_string("ua_parse_device_kind"), NULL,
       ngx_http_ua_parse_kind_variable,
@@ -258,6 +263,9 @@ static ngx_int_t ngx_http_ua_parse_variable(ngx_http_request_t *r,
     case NGX_UA_PARSE_BROWSER_FAMILY:
     	lst = upcf->browsers;
     	break;
+    case NGX_UA_PARSE_BROWSER_VERSION:
+      lst = upcf->browsers;
+      break;
     default:
     	goto not_found;
     }
@@ -282,7 +290,12 @@ static ngx_int_t ngx_http_ua_parse_variable(ngx_http_request_t *r,
         str.data = (u_char *) (r->headers_in.user_agent->value.data + captures[2]);
         str.len = captures[3] - captures[2];
 
-        if (cur->replacement) {
+        if (data == NGX_UA_PARSE_BROWSER_VERSION && cur->rgc->captures > 1) {
+          str.data = (u_char *) (r->headers_in.user_agent->value.data + captures[4]);
+          str.len = captures[cur->rgc->captures * 2 + 1] - captures[4];
+        }
+
+        if (cur->replacement && data != NGX_UA_PARSE_BROWSER_VERSION) {
         	// Copy the string to the foundStr place...
         	foundStr = ngx_alloc((str.len + 1) * sizeof(u_char), r->connection->log);
         	ngx_memzero(foundStr, (str.len + 1) * sizeof(u_char)); // Make sure there will be '\0' in the end

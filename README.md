@@ -4,7 +4,7 @@
 
 It converts the [YAML version](https://raw.githubusercontent.com/ua-parser/uap-core/master/regexes.yaml) of the regexes into json that can be replaced without re-building the module into the binary.
 
-Idea came because [we at Brow.si](https://brow.si) searched for efficient way to speed-up analytics data processing, and what's more fast than storing the logged data calcaulated? :)
+Idea came because [we at Brow.si](https://brow.si) searched for efficient way to speed-up analytics data processing, and what's more fast than storing the logged data calculated? :)
 
 ## Installation
 
@@ -20,7 +20,7 @@ Idea came because [we at Brow.si](https://brow.si) searched for efficient way to
 ```
     http {
         ...
-        log_format userinfo '$remote_addr of kind $ua_parse_device_kind ($ua_parse_device running $ua_parse_os) with $ua_parse_browser';
+        log_format userinfo '$remote_addr of kind $ua_parse_device_kind ($ua_parse_device running $ua_parse_os) with $ua_parse_browser version $ua_parse_browser_ver';
         uaparse_list /path/to/regexes.json;
         ...
         server {
