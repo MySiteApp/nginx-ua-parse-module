@@ -3,15 +3,26 @@ var yaml = require('js-yaml'),
     fs = require('fs');
 
 var OUTPUT = "nginx-regexes.json",
+    READ_KEY = {
+        "user_agent_parsers": "user_agent_parsers",
+        "os_parsers": "os_parsers",
+        "device_parsers": "device_parsers",
+        "device_brand_parsers": "device_parsers",
+        "device_model_parsers": "device_parsers"
+    }
     TRANS_IDX = {
         "user_agent_parsers": "browsers",
         "os_parsers": "os",
-        "device_parsers": "devices"
+        "device_parsers": "devices",
+        "device_brand_parsers": "brands",
+        "device_model_parsers": "models"
     },
     REPLACEMENT_KEY = {
         "user_agent_parsers": "family_replacement",
         "os_parsers": "os_replacement",
-        "device_parsers": "device_replacement"
+        "device_parsers": "device_replacement",
+        "device_brand_parsers": "brand_replacement",
+        "device_model_parsers": "model_replacement"
     };
 
 function formatFilename() {
@@ -30,7 +41,7 @@ request('https://raw.githubusercontent.com/ua-parser/uap-core/master/regexes.yam
     }
     // Loading
     var obj,
-        out = {devices:[], os:[], browsers:[]},
+        out = {devices:[], os:[], browsers:[], models:[], brands:[]},
         cur;
     try {
         obj = yaml.safeLoad(body);
@@ -44,7 +55,7 @@ request('https://raw.githubusercontent.com/ua-parser/uap-core/master/regexes.yam
     var keys = Object.keys(TRANS_IDX),
         key, i, j, elem,
         transKey, replacementKey, tempObj;
-    for (i = 0; i < keys.length && (key = keys[i], cur = obj[key]); i++) {
+    for (i = 0; i < keys.length && (key = keys[i], cur = obj[READ_KEY[key]]); i++) {
         transKey = TRANS_IDX[key];
         replacementKey = REPLACEMENT_KEY[key];
         for (j = 0; j < cur.length; j++) {
