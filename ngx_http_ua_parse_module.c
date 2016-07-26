@@ -12,6 +12,7 @@
 typedef struct {
 	ngx_regex_compile_t *rgc;
 	ngx_str_t			*replacement;
+  ngx_str_t     *ver_replacement;
 } ngx_http_ua_parse_elem_t;
 
 typedef struct {
@@ -91,6 +92,7 @@ ngx_module_t ngx_http_ua_parse_module = {
 #define NGX_UA_PARSE_BROWSER_VERSION 3
 #define NGX_UA_PARSE_DEVICE_BRAND 4
 #define NGX_UA_PARSE_DEVICE_MODEL 5
+#define NGX_UA_PARSE_OS_VERSION 6
 
 static ngx_http_variable_t ngx_http_ua_parse_vars[] = {
     { ngx_string("ua_parse_device"), NULL,
@@ -98,8 +100,12 @@ static ngx_http_variable_t ngx_http_ua_parse_vars[] = {
       NGX_UA_PARSE_DEVICE_FAMILY, 0, 0 },
 
     { ngx_string("ua_parse_os"), NULL,
-	  ngx_http_ua_parse_variable,
-	  NGX_UA_PARSE_OS_FAMILY, 0, 0 },
+      ngx_http_ua_parse_variable,
+      NGX_UA_PARSE_OS_FAMILY, 0, 0 },
+
+    { ngx_string("ua_parse_os_ver"), NULL,
+      ngx_http_ua_parse_variable,
+      NGX_UA_PARSE_OS_VERSION, 0, 0 },
 
     { ngx_string("ua_parse_browser"), NULL,
       ngx_http_ua_parse_variable,
@@ -111,7 +117,7 @@ static ngx_http_variable_t ngx_http_ua_parse_vars[] = {
 
     { ngx_string("ua_parse_device_kind"), NULL,
       ngx_http_ua_parse_kind_variable,
-	  0, 0, 0 },
+      0, 0, 0 },
 
     { ngx_string("ua_parse_device_brand"), NULL,
       ngx_http_ua_parse_variable,
@@ -272,6 +278,9 @@ static ngx_int_t ngx_http_ua_parse_variable(ngx_http_request_t *r,
     case NGX_UA_PARSE_OS_FAMILY:
     	lst = upcf->os;
     	break;
+    case NGX_UA_PARSE_OS_VERSION:
+      lst = upcf->os;
+      break;
     case NGX_UA_PARSE_BROWSER_FAMILY:
     	lst = upcf->browsers;
     	break;
@@ -311,7 +320,7 @@ static ngx_int_t ngx_http_ua_parse_variable(ngx_http_request_t *r,
         str.data = (u_char *) (r->headers_in.user_agent->value.data + captures[2]);
         str.len = captures[3] - captures[2];
 
-        if (data == NGX_UA_PARSE_BROWSER_VERSION && cur->rgc->captures > 1) {
+        if ((data == NGX_UA_PARSE_BROWSER_VERSION || data == NGX_UA_PARSE_OS_VERSION) && cur->rgc->captures > 1) {
           while (captures_amount > 1) {
             if (captures[captures_amount * 2 + 1] != -1) {
               str.data = (u_char *) (r->headers_in.user_agent->value.data + captures[4]);
@@ -321,9 +330,9 @@ static ngx_int_t ngx_http_ua_parse_variable(ngx_http_request_t *r,
               captures_amount = captures_amount - 1;
             }
           }
-                  }
+        }
 
-        // we use all the matches since we'll most likely replace them with something later on
+        // we use all matches since we'll most likely replace them with something later on
         if (data == NGX_UA_PARSE_DEVICE_MODEL || data == NGX_UA_PARSE_DEVICE_BRAND) {
           while (captures_amount > 1) {
             if (captures[captures_amount * 2 + 1] != - 1) {
@@ -336,7 +345,7 @@ static ngx_int_t ngx_http_ua_parse_variable(ngx_http_request_t *r,
           }
         }
 
-        if (cur->replacement && data != NGX_UA_PARSE_BROWSER_VERSION) {
+        if ((cur->replacement && data != NGX_UA_PARSE_BROWSER_VERSION && data != NGX_UA_PARSE_OS_VERSION) || (cur->ver_replacement && (data == NGX_UA_PARSE_OS_VERSION))) {
         	// Copy the string to the foundStr place...
         	foundStr = ngx_alloc((str.len + 1) * sizeof(u_char), r->connection->log);
         	ngx_memzero(foundStr, (str.len + 1) * sizeof(u_char)); // Make sure there will be '\0' in the end
@@ -345,7 +354,11 @@ static ngx_int_t ngx_http_ua_parse_variable(ngx_http_request_t *r,
         	// Now we can use sprintf() safely (else it would copy the whole user agent string..)
         	str.data = p = ngx_alloc(100 * sizeof(u_char), r->connection->log);
         	ngx_memzero(p, 100 * sizeof(u_char));
-        	p = ngx_sprintf(p, (const char *)cur->replacement->data, foundStr);
+          if (data == NGX_UA_PARSE_OS_VERSION) {
+            p = ngx_sprintf(p, (const char *)cur->ver_replacement->data, foundStr);
+          } else {
+            p = ngx_sprintf(p, (const char *)cur->replacement->data, foundStr);
+          }
         	*p = '\0';
         	str.len = p - str.data;
         }
@@ -400,6 +413,9 @@ static ngx_array_t * ngx_http_ua_parse_load_from_json(ngx_conf_t *cf, cJSON *cur
 		if (cJSON_GetObjectItem(arr, "replacement") != NULL) {
             elem->replacement = ngx_http_ua_copy_json(cJSON_GetObjectItem(arr, "replacement"), cf);
 		}
+    if (cJSON_GetObjectItem(arr, "version_replacement") != NULL) {
+      elem->ver_replacement = ngx_http_ua_copy_json(cJSON_GetObjectItem(arr, "version_replacement"), cf);
+    }
 	}
 failed:
 	return lst;
@@ -442,7 +458,7 @@ ngx_http_ua_parse_list(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     size = ngx_file_size(&fi);
 
     // TODO: this value is hardcoded. Is this really the only way to go? Slight changes to json db will definitely disturb the process
-    len = (off_t) 171619 > size ? (size_t) size : 171619;
+    len = (off_t) 174781 > size ? (size_t) size : 174781;
 
     buf = ngx_alloc(len, cf->log);
     if (buf == NULL) {
