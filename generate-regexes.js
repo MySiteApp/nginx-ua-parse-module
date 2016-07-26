@@ -54,6 +54,7 @@ request('https://raw.githubusercontent.com/ua-parser/uap-core/master/regexes.yam
     // Parsing
     var keys = Object.keys(TRANS_IDX),
         key, i, j, elem,
+        replacement,
         os_version_replacement,
         transKey, replacementKey, tempObj;
     for (i = 0; i < keys.length && (key = keys[i], cur = obj[READ_KEY[key]]); i++) {
@@ -66,7 +67,15 @@ request('https://raw.githubusercontent.com/ua-parser/uap-core/master/regexes.yam
                 regex: elem.regex
             };
             if (elem[replacementKey]) {
-                tempObj.replacement = elem[replacementKey].replace("$1", "%s");
+                replacement = '';
+                replacement = elem[replacementKey].replace("$1", "%s");
+                replacement = replacement.replace("$2", "");
+                replacement = replacement.replace("$3", "");
+                replacement = replacement.replace("$4", "");
+                replacement = replacement.trim();
+                if (replacement != '') {
+                    tempObj.replacement = replacement;
+                }
             }
             if (replacementKey == "os_replacement") {
                 os_version_replacement = '';
@@ -82,8 +91,12 @@ request('https://raw.githubusercontent.com/ua-parser/uap-core/master/regexes.yam
                 if (elem['os_v4_replacement']) {
                     os_version_replacement += elem['os_v4_replacement'];
                 }
+                os_version_replacement = os_version_replacement.replace("$1", "%s").trim();
+                os_version_replacement = os_version_replacement.replace("$2", "").trim();
+                os_version_replacement = os_version_replacement.replace("$3", "").trim();
+                os_version_replacement = os_version_replacement.replace("$4", "").trim();
                 if (os_version_replacement != '') {
-                    tempObj.version_replacement = os_version_replacement.replace("$1", "%s").trim();
+                    tempObj.version_replacement = os_version_replacement;
                 }
             }
             out[transKey].push(tempObj);
