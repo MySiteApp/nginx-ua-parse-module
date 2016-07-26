@@ -54,6 +54,7 @@ request('https://raw.githubusercontent.com/ua-parser/uap-core/master/regexes.yam
     // Parsing
     var keys = Object.keys(TRANS_IDX),
         key, i, j, elem,
+        os_version_replacement,
         transKey, replacementKey, tempObj;
     for (i = 0; i < keys.length && (key = keys[i], cur = obj[READ_KEY[key]]); i++) {
         transKey = TRANS_IDX[key];
@@ -66,6 +67,24 @@ request('https://raw.githubusercontent.com/ua-parser/uap-core/master/regexes.yam
             };
             if (elem[replacementKey]) {
                 tempObj.replacement = elem[replacementKey].replace("$1", "%s");
+            }
+            if (replacementKey == "os_replacement") {
+                os_version_replacement = '';
+                if (elem['os_v1_replacement']) {
+                    os_version_replacement += elem['os_v1_replacement'] + ' ';
+                }
+                if (elem['os_v2_replacement']) {
+                    os_version_replacement += elem['os_v2_replacement'] + ' ';
+                }
+                if (elem['os_v3_replacement']) {
+                    os_version_replacement += elem['os_v3_replacement'] + ' ';
+                }
+                if (elem['os_v4_replacement']) {
+                    os_version_replacement += elem['os_v4_replacement'];
+                }
+                if (os_version_replacement != '') {
+                    tempObj.version_replacement = os_version_replacement.replace("$1", "%s").trim();
+                }
             }
             out[transKey].push(tempObj);
         }
