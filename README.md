@@ -20,7 +20,7 @@ Idea came because [we at Brow.si](https://brow.si) searched for efficient way to
 ```
     http {
         ...
-        log_format userinfo '$remote_addr of kind $ua_parse_device_kind ($ua_parse_device running $ua_parse_os) with $ua_parse_browser version $ua_parse_browser_ver';
+        log_format userinfo '$remote_addr of kind $ua_parse_device_kind ($ua_parse_device running $ua_parse_os, device brand $ua_parse_device_brand, device model $ua_parse_device_model) with $ua_parse_browser version $ua_parse_browser_ver';
         uaparse_list /path/to/regexes.json;
         ...
         server {

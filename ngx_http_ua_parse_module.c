@@ -18,6 +18,8 @@ typedef struct {
     ngx_array_t *devices;
     ngx_array_t *browsers;
     ngx_array_t *os;
+    ngx_array_t *brands;
+    ngx_array_t *models;
     // Kind regexes
     ngx_regex_t tabletKindRegex;
     ngx_regex_t mobileKindRegex;
@@ -87,6 +89,8 @@ ngx_module_t ngx_http_ua_parse_module = {
 #define NGX_UA_PARSE_OS_FAMILY 1
 #define NGX_UA_PARSE_BROWSER_FAMILY 2
 #define NGX_UA_PARSE_BROWSER_VERSION 3
+#define NGX_UA_PARSE_DEVICE_BRAND 4
+#define NGX_UA_PARSE_DEVICE_MODEL 5
 
 static ngx_http_variable_t ngx_http_ua_parse_vars[] = {
     { ngx_string("ua_parse_device"), NULL,
@@ -108,6 +112,14 @@ static ngx_http_variable_t ngx_http_ua_parse_vars[] = {
     { ngx_string("ua_parse_device_kind"), NULL,
       ngx_http_ua_parse_kind_variable,
 	  0, 0, 0 },
+
+    { ngx_string("ua_parse_device_brand"), NULL,
+      ngx_http_ua_parse_variable,
+      NGX_UA_PARSE_DEVICE_BRAND, 0, 0 },
+
+    { ngx_string("ua_parse_device_model"), NULL,
+      ngx_http_ua_parse_variable,
+      NGX_UA_PARSE_DEVICE_MODEL, 0, 0 },
 
     { ngx_null_string, NULL, NULL, 0, 0, 0 }
 };
@@ -243,7 +255,7 @@ static ngx_int_t ngx_http_ua_parse_variable(ngx_http_request_t *r,
     ngx_http_variable_value_t *v, uintptr_t data)
 {
     ngx_http_ua_parse_conf_t    *upcf;
-    ngx_uint_t                  n, i;
+    ngx_uint_t                  n, i, captures_amount;
     ngx_http_ua_parse_elem_t   	*ptr, *cur;
     int                         rc, *captures;
     ngx_array_t					*lst;
@@ -266,6 +278,12 @@ static ngx_int_t ngx_http_ua_parse_variable(ngx_http_request_t *r,
     case NGX_UA_PARSE_BROWSER_VERSION:
       lst = upcf->browsers;
       break;
+    case NGX_UA_PARSE_DEVICE_BRAND:
+      lst = upcf->brands;
+      break;
+    case NGX_UA_PARSE_DEVICE_MODEL:
+      lst = upcf->models;
+      break;
     default:
     	goto not_found;
     }
@@ -280,6 +298,9 @@ static ngx_int_t ngx_http_ua_parse_variable(ngx_http_request_t *r,
         n = (cur->rgc->captures + 1) * 3;
         if (n > 20) {
         	n = 15; // 4+1 * 3
+          captures_amount = 4;
+        } else {
+          captures_amount = cur->rgc->captures;
         }
         captures = ngx_palloc(r->pool, n * sizeof(int));
         rc = ngx_regex_exec(cur->rgc->regex, &r->headers_in.user_agent->value, captures, n);
@@ -291,8 +312,28 @@ static ngx_int_t ngx_http_ua_parse_variable(ngx_http_request_t *r,
         str.len = captures[3] - captures[2];
 
         if (data == NGX_UA_PARSE_BROWSER_VERSION && cur->rgc->captures > 1) {
-          str.data = (u_char *) (r->headers_in.user_agent->value.data + captures[4]);
-          str.len = captures[cur->rgc->captures * 2 + 1] - captures[4];
+          while (captures_amount > 1) {
+            if (captures[captures_amount * 2 + 1] != -1) {
+              str.data = (u_char *) (r->headers_in.user_agent->value.data + captures[4]);
+              str.len = captures[captures_amount * 2 + 1] - captures[4];
+              break;
+            } else {
+              captures_amount = captures_amount - 1;
+            }
+          }
+                  }
+
+        // we use all the matches since we'll most likely replace them with something later on
+        if (data == NGX_UA_PARSE_DEVICE_MODEL || data == NGX_UA_PARSE_DEVICE_BRAND) {
+          while (captures_amount > 1) {
+            if (captures[captures_amount * 2 + 1] != - 1) {
+              str.data = (u_char *) (r->headers_in.user_agent->value.data + captures[2]);
+              str.len = captures[captures_amount * 2 + 1] - captures[2];
+              break;
+            } else {
+              captures_amount = captures_amount - 1;
+            }
+          }
         }
 
         if (cur->replacement && data != NGX_UA_PARSE_BROWSER_VERSION) {
@@ -400,7 +441,8 @@ ngx_http_ua_parse_list(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     }
     size = ngx_file_size(&fi);
 
-    len = (off_t) 131072 > size ? (size_t) size : 131072;
+    // TODO: this value is hardcoded. Is this really the only way to go? Slight changes to json db will definitely disturb the process
+    len = (off_t) 171619 > size ? (size_t) size : 171619;
 
     buf = ngx_alloc(len, cf->log);
     if (buf == NULL) {
@@ -419,6 +461,8 @@ ngx_http_ua_parse_list(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     upcf->os = ngx_http_ua_parse_load_from_json(cf, cJSON_GetObjectItem(root, "os"));
     upcf->devices = ngx_http_ua_parse_load_from_json(cf, cJSON_GetObjectItem(root, "devices"));
     upcf->browsers = ngx_http_ua_parse_load_from_json(cf, cJSON_GetObjectItem(root, "browsers"));
+    upcf->brands = ngx_http_ua_parse_load_from_json(cf, cJSON_GetObjectItem(root, "brands"));
+    upcf->models= ngx_http_ua_parse_load_from_json(cf, cJSON_GetObjectItem(root, "models"));
 
     rc = NGX_CONF_OK;
 
@@ -471,4 +515,13 @@ ngx_http_ua_parse_cleanup(void *data)
     if (upcf->os) {
         ngx_array_destroy(upcf->os);
     }
+
+    if (upcf->brands) {
+      ngx_array_destroy(upcf->brands);
+    }
+
+    if (upcf->models) {
+      ngx_array_destroy(upcf->models);
+    }
+
 }
