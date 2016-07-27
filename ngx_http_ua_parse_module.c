@@ -372,6 +372,9 @@ static ngx_int_t ngx_http_ua_parse_variable(ngx_http_request_t *r,
           }
         	*p = '\0';
         	str.len = p - str.data;
+
+          // Finally free foundStr after we've used it
+          ngx_free(foundStr);
         }
 
         v->data = str.data;
