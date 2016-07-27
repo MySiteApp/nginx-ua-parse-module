@@ -94,6 +94,8 @@ ngx_module_t ngx_http_ua_parse_module = {
 #define NGX_UA_PARSE_DEVICE_MODEL 5
 #define NGX_UA_PARSE_OS_VERSION 6
 
+#define NGX_UA_PARSE_SIZE_THRESHOLD 200
+
 static ngx_http_variable_t ngx_http_ua_parse_vars[] = {
     { ngx_string("ua_parse_device"), NULL,
       ngx_http_ua_parse_variable,
@@ -319,6 +321,11 @@ static ngx_int_t ngx_http_ua_parse_variable(ngx_http_request_t *r,
         // Match the first one (captures[2] is the start, captures[3] is the end)
         str.data = (u_char *) (r->headers_in.user_agent->value.data + captures[2]);
         str.len = captures[3] - captures[2];
+
+        if (str.len < 0 || str.len > NGX_UA_PARSE_SIZE_THRESHOLD) {
+          str.data = (u_char *) (r->headers_in.user_agent->value.data + captures[0]);
+          str.len = captures[1] - captures[0];
+        }
 
         if ((data == NGX_UA_PARSE_BROWSER_VERSION || data == NGX_UA_PARSE_OS_VERSION) && cur->rgc->captures > 1) {
           while (captures_amount > 1) {
