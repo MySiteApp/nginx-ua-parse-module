@@ -303,6 +303,10 @@ static ngx_int_t ngx_http_ua_parse_variable(ngx_http_request_t *r,
         goto not_found;
     }
 
+    if (!r->headers_in.user_agent) {
+      goto not_found;
+    }
+
     ptr = lst->elts;
     for (i = 0; i < lst->nelts; i++) {
         cur = &ptr[i];
