@@ -329,7 +329,7 @@ static ngx_int_t ngx_http_ua_parse_variable(ngx_http_request_t *r,
         str.len = captures[1] - captures[0];
 
         // Match the first one (captures[2] is the start, captures[3] is the end) in most conditions
-        if (captures_amount > 0 && captures[3] - captures[2] < 0 && str.len > NGX_UA_PARSE_SIZE_THRESHOLD) {
+        if (captures_amount > 0 && (captures[3] - captures[2] < 0 && str.len > NGX_UA_PARSE_SIZE_THRESHOLD)) {
           str.data = (u_char *) (r->headers_in.user_agent->value.data + captures[2]);
           str.len = captures[3] - captures[2];
         }
