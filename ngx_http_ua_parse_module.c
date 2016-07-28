@@ -325,13 +325,11 @@ static ngx_int_t ngx_http_ua_parse_variable(ngx_http_request_t *r,
 
         // if we have 0 captures, we have no right to access captures[3], and captures[2] contain no meaningful info
         // so we just take the whole match (captures[1] - captures[0])
-        if (cur->rgc->captures == 0 || captures[3] - captures[2] < 0 || str.len > NGX_UA_PARSE_SIZE_THRESHOLD) {
-          str.data = (u_char *) (r->headers_in.user_agent->value.data + captures[0]);
-          str.len = captures[1] - captures[0];
-        }
+        str.data = (u_char *) (r->headers_in.user_agent->value.data + captures[0]);
+        str.len = captures[1] - captures[0];
 
-        // Match the first one (captures[2] is the start, captures[3] is the end)
-        if (captures_amount > 0) {
+        // Match the first one (captures[2] is the start, captures[3] is the end) in most conditions
+        if (captures_amount > 0 && captures[3] - captures[2] < 0 && str.len > NGX_UA_PARSE_SIZE_THRESHOLD) {
           str.data = (u_char *) (r->headers_in.user_agent->value.data + captures[2]);
           str.len = captures[3] - captures[2];
         }
