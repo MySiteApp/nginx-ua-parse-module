@@ -263,7 +263,7 @@ static ngx_int_t ngx_http_ua_parse_variable(ngx_http_request_t *r,
     ngx_http_variable_value_t *v, uintptr_t data)
 {
     ngx_http_ua_parse_conf_t    *upcf;
-    ngx_uint_t                  n, i, captures_amount;
+    ngx_uint_t                  n, i, captures_amount, replacement_len = 0;
     ngx_http_ua_parse_elem_t   	*ptr, *cur;
     int                         rc, *captures;
     ngx_array_t					*lst;
@@ -366,8 +366,14 @@ static ngx_int_t ngx_http_ua_parse_variable(ngx_http_request_t *r,
         	ngx_memcpy(foundStr, str.data, str.len * sizeof(u_char));
 
         	// Now we can use sprintf() safely (else it would copy the whole user agent string..)
-        	str.data = p = ngx_alloc(100 * sizeof(u_char), r->connection->log);
-        	ngx_memzero(p, 100 * sizeof(u_char));
+          if (data == NGX_UA_PARSE_OS_VERSION) {
+            replacement_len = cur->ver_replacement->len;
+          } else {
+            replacement_len = cur->replacement->len;
+          }
+          str.data = p = ngx_alloc((replacement_len + str.len + 1) * sizeof(u_char), r->connection->log);
+          ngx_memzero(p, (replacement_len + str.len + 1) * sizeof(u_char));
+
           if (data == NGX_UA_PARSE_OS_VERSION) {
             p = ngx_sprintf(p, (const char *)cur->ver_replacement->data, foundStr);
           } else {
