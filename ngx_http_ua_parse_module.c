@@ -265,7 +265,7 @@ static ngx_int_t ngx_http_ua_parse_variable(ngx_http_request_t *r,
     ngx_http_ua_parse_conf_t    *upcf;
     ngx_uint_t                  n, i, captures_amount, replacement_len = 0;
     ngx_http_ua_parse_elem_t   	*ptr, *cur;
-    int                         rc, *captures;
+    int                         rc, *captures = NULL;
     ngx_array_t					*lst;
     ngx_str_t					str;
     u_char						*p, *foundStr;
@@ -361,7 +361,7 @@ static ngx_int_t ngx_http_ua_parse_variable(ngx_http_request_t *r,
 
         if ((cur->replacement && data != NGX_UA_PARSE_BROWSER_VERSION && data != NGX_UA_PARSE_OS_VERSION) || (cur->ver_replacement && (data == NGX_UA_PARSE_OS_VERSION))) {
         	// Copy the string to the foundStr place...
-        	foundStr = ngx_alloc((str.len + 1) * sizeof(u_char), r->connection->log);
+        	foundStr = ngx_palloc(r->pool, (str.len + 1) * sizeof(u_char));
         	ngx_memzero(foundStr, (str.len + 1) * sizeof(u_char)); // Make sure there will be '\0' in the end
         	ngx_memcpy(foundStr, str.data, str.len * sizeof(u_char));
 
@@ -371,7 +371,7 @@ static ngx_int_t ngx_http_ua_parse_variable(ngx_http_request_t *r,
           } else {
             replacement_len = cur->replacement->len;
           }
-          str.data = p = ngx_alloc((replacement_len + str.len + 1) * sizeof(u_char), r->connection->log);
+          str.data = p = ngx_palloc(r->pool, (replacement_len + str.len + 1) * sizeof(u_char));
           ngx_memzero(p, (replacement_len + str.len + 1) * sizeof(u_char));
 
           if (data == NGX_UA_PARSE_OS_VERSION) {
@@ -383,7 +383,7 @@ static ngx_int_t ngx_http_ua_parse_variable(ngx_http_request_t *r,
         	str.len = p - str.data;
 
           // Finally free foundStr after we've used it
-          ngx_free(foundStr);
+          ngx_pfree(r->pool, foundStr);
         }
 
         v->data = str.data;
@@ -398,6 +398,10 @@ not_found:
 	if (v->valid != 1) {
 		v->not_found = 1;
 	}
+
+  if (captures) {
+    ngx_pfree(r->pool, captures);
+  }
     return NGX_OK;
 }
 
