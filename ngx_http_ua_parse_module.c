@@ -362,6 +362,10 @@ static ngx_int_t ngx_http_ua_parse_variable(ngx_http_request_t *r,
         if ((cur->replacement && data != NGX_UA_PARSE_BROWSER_VERSION && data != NGX_UA_PARSE_OS_VERSION) || (cur->ver_replacement && (data == NGX_UA_PARSE_OS_VERSION))) {
         	// Copy the string to the foundStr place...
         	foundStr = ngx_palloc(r->pool, (str.len + 1) * sizeof(u_char));
+          // Something's wrong, fail the match and proceed
+          if (!foundStr) {
+            goto not_found;
+          }
         	ngx_memzero(foundStr, (str.len + 1) * sizeof(u_char)); // Make sure there will be '\0' in the end
         	ngx_memcpy(foundStr, str.data, str.len * sizeof(u_char));
 
@@ -372,6 +376,11 @@ static ngx_int_t ngx_http_ua_parse_variable(ngx_http_request_t *r,
             replacement_len = cur->replacement->len;
           }
           str.data = p = ngx_palloc(r->pool, (replacement_len + str.len + 1) * sizeof(u_char));
+          // Could not allocate memory in pool for str.data/p
+          if (!p) {
+            ngx_pfree(r->pool, foundStr);
+            goto not_found;
+          }
           ngx_memzero(p, (replacement_len + str.len + 1) * sizeof(u_char));
 
           if (data == NGX_UA_PARSE_OS_VERSION) {
