@@ -375,9 +375,9 @@ static ngx_int_t ngx_http_ua_parse_variable(ngx_http_request_t *r,
           ngx_memzero(p, (replacement_len + str.len + 1) * sizeof(u_char));
 
           if (data == NGX_UA_PARSE_OS_VERSION) {
-            p = ngx_sprintf(p, (const char *)cur->ver_replacement->data, foundStr);
+            p = ngx_snprintf(p, (size_t) (replacement_len + str.len + 1) * sizeof(u_char), (const char *)cur->ver_replacement->data, foundStr);
           } else {
-            p = ngx_sprintf(p, (const char *)cur->replacement->data, foundStr);
+            p = ngx_snprintf(p, (size_t) (replacement_len + str.len + 1) * sizeof(u_char), (const char *)cur->replacement->data, foundStr);
           }
         	*p = '\0';
         	str.len = p - str.data;
