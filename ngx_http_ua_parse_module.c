@@ -24,7 +24,11 @@ typedef struct {
     // Kind regexes
     ngx_regex_t tabletKindRegex;
     ngx_regex_t mobileKindRegex;
-} ngx_http_ua_parse_conf_t;
+} ngx_http_ua_parse_mod_conf_t;
+
+typedef struct {
+    ngx_flag_t enabled;
+} ngx_http_ua_parse_loc_conf_t;
 
 static ngx_str_t *ngx_http_ua_copy_json(cJSON *jsonSrc, ngx_conf_t *cf);
 
@@ -39,8 +43,11 @@ static ngx_int_t ngx_http_ua_parse_variable(ngx_http_request_t *r,
 static ngx_int_t ngx_http_ua_parse_kind_variable(ngx_http_request_t *r,
     ngx_http_variable_value_t *v, uintptr_t data);
 
-static void * ngx_http_ua_parse_create_conf(ngx_conf_t *cf);
-static char * ngx_http_ua_parse_init_conf(ngx_conf_t *cf, void *conf);
+static void * ngx_http_ua_parse_create_mod_conf(ngx_conf_t *cf);
+static char * ngx_http_ua_parse_init_mod_conf(ngx_conf_t *cf, void *conf);
+static void * ngx_http_ua_parse_create_loc_conf(ngx_conf_t *cf);
+static char * ngx_http_ua_parse_merge_loc_conf(ngx_conf_t *cf, void *prev, void *conf);
+
 static void ngx_http_ua_parse_cleanup(void *data);
 
 static ngx_array_t * ngx_http_ua_parse_load_from_json(ngx_conf_t *cf, cJSON *current);
@@ -53,6 +60,13 @@ static ngx_command_t ngx_http_ua_parse_commands[] = {
       0,
       NULL },
 
+    { ngx_string("uaparse_enable"),
+      NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
+      ngx_conf_set_flag_slot,
+      NGX_HTTP_LOC_CONF_OFFSET,
+      offsetof(ngx_http_ua_parse_loc_conf_t, enabled),
+      NULL },
+
     ngx_null_command
 };
 
@@ -60,14 +74,14 @@ static ngx_http_module_t ngx_http_ua_parse_module_ctx = {
     ngx_http_ua_parse_add_variables,    /* preconfiguration */
     NULL,                               /* postconfiguration */
 
-    ngx_http_ua_parse_create_conf,      /* create main configuration */
-    ngx_http_ua_parse_init_conf,        /* init main configuration */
+    ngx_http_ua_parse_create_mod_conf,  /* create main configuration */
+    ngx_http_ua_parse_init_mod_conf,    /* init main configuration */
 
     NULL,                               /* create server configuration */
     NULL,                               /* merge server configuration */
 
-    NULL,                               /* create location configuration */
-    NULL                                /* merge location configuration */
+    ngx_http_ua_parse_create_loc_conf,  /* create location configuration */
+    ngx_http_ua_parse_merge_loc_conf,   /* merge location configuration */
 };
 
 
@@ -148,12 +162,12 @@ ngx_http_ua_copy_json(cJSON *jsonSrc, ngx_conf_t *cf) {
 
 // Create configuration
 static void *
-ngx_http_ua_parse_create_conf(ngx_conf_t *cf)
+ngx_http_ua_parse_create_mod_conf(ngx_conf_t *cf)
 {
     ngx_pool_cleanup_t     *cln;
-    ngx_http_ua_parse_conf_t  *conf;
+    ngx_http_ua_parse_mod_conf_t  *conf;
 
-    conf = ngx_pcalloc(cf->pool, sizeof(ngx_http_ua_parse_conf_t));
+    conf = ngx_pcalloc(cf->pool, sizeof(ngx_http_ua_parse_mod_conf_t));
     if (conf == NULL) {
         return NULL;
     }
@@ -171,9 +185,9 @@ ngx_http_ua_parse_create_conf(ngx_conf_t *cf)
 
 // Init configuration
 static char *
-ngx_http_ua_parse_init_conf(ngx_conf_t *cf, void *conf)
+ngx_http_ua_parse_init_mod_conf(ngx_conf_t *cf, void *conf)
 {
-    ngx_http_ua_parse_conf_t    *upcf = conf;
+    ngx_http_ua_parse_mod_conf_t    *upcf = conf;
     ngx_regex_compile_t			rgc;
     char						*rc;
     u_char						errstr[NGX_MAX_CONF_ERRSTR];
@@ -212,16 +226,49 @@ failed:
 	return rc;
 }
 
+// Create loc conf
+static void * ngx_http_ua_parse_create_loc_conf(ngx_conf_t *cf)
+{
+  ngx_http_ua_parse_loc_conf_t *conf;
+  conf = ngx_pcalloc(cf->pool, sizeof(ngx_http_ua_parse_loc_conf_t));
+  if (conf == NULL) {
+    return NGX_CONF_ERROR;
+  }
+
+  conf->enabled = NGX_CONF_UNSET;
+
+  return conf;
+}
+
+// Merge loc conf
+static char * ngx_http_ua_parse_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child)
+{
+  ngx_http_ua_parse_loc_conf_t *prev = parent;
+  ngx_http_ua_parse_loc_conf_t *this = child;
+
+  ngx_conf_merge_value(this->enabled, prev->enabled, 0);
+
+  return NGX_CONF_OK;
+}
+
 // Kind (other/mobile/tablet)
 static ngx_int_t ngx_http_ua_parse_kind_variable(ngx_http_request_t *r,
     ngx_http_variable_value_t *v, uintptr_t data)
 {
-	ngx_http_ua_parse_conf_t    *upcf;
-	u_char						*str;
-	ngx_http_variable_value_t	device, os;
-	ngx_regex_t					*mobileKind, *tabletKind;
+	ngx_http_ua_parse_mod_conf_t *upcf;
+  ngx_http_ua_parse_loc_conf_t *loc_conf;
+	u_char *str;
+	ngx_http_variable_value_t device, os;
+	ngx_regex_t *mobileKind, *tabletKind;
 
 	upcf = ngx_http_get_module_main_conf(r, ngx_http_ua_parse_module);
+  loc_conf = ngx_http_get_module_loc_conf(r, ngx_http_ua_parse_module);
+  if (!loc_conf->enabled) {
+    v->valid = 0;
+    v->not_found = 1;
+    return NGX_OK;
+  }
+
 	mobileKind = &upcf->mobileKindRegex;
 	tabletKind = &upcf->tabletKindRegex;
 
@@ -262,16 +309,22 @@ static ngx_int_t ngx_http_ua_parse_kind_variable(ngx_http_request_t *r,
 static ngx_int_t ngx_http_ua_parse_variable(ngx_http_request_t *r,
     ngx_http_variable_value_t *v, uintptr_t data)
 {
-    ngx_http_ua_parse_conf_t    *upcf;
-    ngx_uint_t                  n, i, captures_amount, replacement_len = 0;
-    ngx_http_ua_parse_elem_t   	*ptr, *cur;
-    int                         rc, *captures = NULL;
-    ngx_array_t					*lst;
-    ngx_str_t					str;
-    u_char						*p, *foundStr;
+    ngx_http_ua_parse_mod_conf_t *upcf;
+    ngx_http_ua_parse_loc_conf_t *loc_conf;
+    ngx_uint_t n, i, captures_amount, replacement_len = 0;
+    ngx_http_ua_parse_elem_t *ptr, *cur;
+    int rc, *captures = NULL;
+    ngx_array_t *lst;
+    ngx_str_t str;
+    u_char *p, *foundStr;
 
     upcf = ngx_http_get_module_main_conf(r, ngx_http_ua_parse_module);
+    loc_conf = ngx_http_get_module_loc_conf(r, ngx_http_ua_parse_module);
     v->valid = 0;
+    if (!loc_conf->enabled) {
+      v->not_found = 1;
+      return NGX_OK;
+    }
 
     switch (data) {
     case NGX_UA_PARSE_DEVICE_FAMILY:
@@ -469,7 +522,7 @@ ngx_http_ua_parse_list(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     off_t           size;
     char*           rc;
     cJSON           *root = NULL;
-    ngx_http_ua_parse_conf_t    *upcf = conf;
+    ngx_http_ua_parse_mod_conf_t    *upcf = conf;
 
     rc = NGX_CONF_ERROR;
 
@@ -554,7 +607,7 @@ ngx_http_ua_parse_add_variables(ngx_conf_t *cf)
 static void
 ngx_http_ua_parse_cleanup(void *data)
 {
-    ngx_http_ua_parse_conf_t  *upcf = data;
+    ngx_http_ua_parse_mod_conf_t  *upcf = data;
 
     if (upcf->devices) {
         ngx_array_destroy(upcf->devices);
