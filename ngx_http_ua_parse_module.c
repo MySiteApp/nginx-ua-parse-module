@@ -370,7 +370,7 @@ static ngx_int_t ngx_http_ua_parse_variable(ngx_http_request_t *r,
         } else {
           captures_amount = cur->rgc->captures;
         }
-        captures = ngx_palloc(r->pool, n * sizeof(int));
+        captures = ngx_pcalloc(r->pool, n * sizeof(int));
         rc = ngx_regex_exec(cur->rgc->regex, &r->headers_in.user_agent->value, captures, n);
         if (rc < 0) {
         	continue;
@@ -414,7 +414,7 @@ static ngx_int_t ngx_http_ua_parse_variable(ngx_http_request_t *r,
 
         if ((cur->replacement && data != NGX_UA_PARSE_BROWSER_VERSION && data != NGX_UA_PARSE_OS_VERSION) || (cur->ver_replacement && (data == NGX_UA_PARSE_OS_VERSION))) {
         	// Copy the string to the foundStr place...
-        	foundStr = ngx_palloc(r->pool, (str.len + 1) * sizeof(u_char));
+        	foundStr = ngx_pcalloc(r->pool, (str.len + 1) * sizeof(u_char));
           // Something's wrong, fail the match and proceed
           if (!foundStr) {
             goto not_found;
@@ -428,7 +428,7 @@ static ngx_int_t ngx_http_ua_parse_variable(ngx_http_request_t *r,
           } else {
             replacement_len = cur->replacement->len;
           }
-          str.data = p = ngx_palloc(r->pool, (replacement_len + str.len + 1) * sizeof(u_char));
+          str.data = p = ngx_pcalloc(r->pool, (replacement_len + str.len + 1) * sizeof(u_char));
           // Could not allocate memory in pool for str.data/p
           if (!p) {
             ngx_pfree(r->pool, foundStr);
