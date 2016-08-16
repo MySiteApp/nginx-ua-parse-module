@@ -16,15 +16,19 @@ typedef struct {
 } ngx_http_ua_parse_elem_t;
 
 typedef struct {
-    ngx_array_t *devices;
-    ngx_array_t *browsers;
-    ngx_array_t *os;
-    ngx_array_t *brands;
-    ngx_array_t *models;
     // Kind regexes
     ngx_regex_t tabletKindRegex;
     ngx_regex_t mobileKindRegex;
 } ngx_http_ua_parse_mod_conf_t;
+
+typedef struct {
+  ngx_str_t *filename;
+  ngx_array_t *devices;
+  ngx_array_t *browsers;
+  ngx_array_t *os;
+  ngx_array_t *brands;
+  ngx_array_t *models;
+} ngx_http_ua_parse_srv_conf_t;
 
 typedef struct {
     ngx_flag_t enabled;
@@ -45,6 +49,8 @@ static ngx_int_t ngx_http_ua_parse_kind_variable(ngx_http_request_t *r,
 
 static void * ngx_http_ua_parse_create_mod_conf(ngx_conf_t *cf);
 static char * ngx_http_ua_parse_init_mod_conf(ngx_conf_t *cf, void *conf);
+static void * ngx_http_ua_parse_create_srv_conf(ngx_conf_t *cf);
+static char * ngx_http_ua_parse_merge_srv_conf(ngx_conf_t *cf, void *prev, void *conf);
 static void * ngx_http_ua_parse_create_loc_conf(ngx_conf_t *cf);
 static char * ngx_http_ua_parse_merge_loc_conf(ngx_conf_t *cf, void *prev, void *conf);
 
@@ -54,9 +60,9 @@ static ngx_array_t * ngx_http_ua_parse_load_from_json(ngx_conf_t *cf, cJSON *cur
 
 static ngx_command_t ngx_http_ua_parse_commands[] = {
     { ngx_string("uaparse_list"),
-      NGX_HTTP_MAIN_CONF|NGX_CONF_TAKE1,
+      NGX_HTTP_SRV_CONF|NGX_CONF_TAKE1,
       ngx_http_ua_parse_list,
-      NGX_HTTP_MAIN_CONF_OFFSET,
+      NGX_HTTP_SRV_CONF_OFFSET,
       0,
       NULL },
 
@@ -77,8 +83,8 @@ static ngx_http_module_t ngx_http_ua_parse_module_ctx = {
     ngx_http_ua_parse_create_mod_conf,  /* create main configuration */
     ngx_http_ua_parse_init_mod_conf,    /* init main configuration */
 
-    NULL,                               /* create server configuration */
-    NULL,                               /* merge server configuration */
+    ngx_http_ua_parse_create_srv_conf,  /* create server configuration */
+    ngx_http_ua_parse_merge_srv_conf,   /* merge server configuration */
 
     ngx_http_ua_parse_create_loc_conf,  /* create location configuration */
     ngx_http_ua_parse_merge_loc_conf,   /* merge location configuration */
@@ -152,7 +158,15 @@ ngx_http_ua_copy_json(cJSON *jsonSrc, ngx_conf_t *cf) {
     ngx_str_t     *str;
     u_char        *src = (u_char*)jsonSrc->valuestring;
 
+    if (src == NULL) {
+      return NULL;
+    }
+
     str = ngx_pcalloc(cf->pool, sizeof(ngx_str_t));
+    if (str == NULL) {
+      return NULL;
+    }
+
     str->len = ngx_strlen(src) + 1;
     str->data = ngx_pcalloc(cf->pool, str->len);
     (void)ngx_copy(str->data, src, str->len);
@@ -164,21 +178,12 @@ ngx_http_ua_copy_json(cJSON *jsonSrc, ngx_conf_t *cf) {
 static void *
 ngx_http_ua_parse_create_mod_conf(ngx_conf_t *cf)
 {
-    ngx_pool_cleanup_t     *cln;
     ngx_http_ua_parse_mod_conf_t  *conf;
 
     conf = ngx_pcalloc(cf->pool, sizeof(ngx_http_ua_parse_mod_conf_t));
     if (conf == NULL) {
         return NULL;
     }
-
-    cln = ngx_pool_cleanup_add(cf->pool, 0);
-    if (cln == NULL) {
-        return NULL;
-    }
-
-    cln->handler = ngx_http_ua_parse_cleanup;
-    cln->data = conf;
 
     return conf;
 }
@@ -226,6 +231,53 @@ failed:
 	return rc;
 }
 
+// Create srv conf
+static void * ngx_http_ua_parse_create_srv_conf(ngx_conf_t *cf)
+{
+  ngx_pool_cleanup_t     *cln;
+  ngx_http_ua_parse_srv_conf_t *conf;
+  conf = ngx_pcalloc(cf->pool, sizeof(ngx_http_ua_parse_srv_conf_t));
+
+  if (conf == NULL) {
+    return NGX_CONF_ERROR;
+  }
+
+  cln = ngx_pool_cleanup_add(cf->pool, 0);
+  if (cln == NULL) {
+    return NULL;
+  }
+
+  cln->handler = ngx_http_ua_parse_cleanup;
+  cln->data = conf;
+
+  conf->devices = NGX_CONF_UNSET_PTR;
+  conf->browsers = NGX_CONF_UNSET_PTR;
+  conf->os = NGX_CONF_UNSET_PTR;
+  conf->brands = NGX_CONF_UNSET_PTR;
+  conf->models = NGX_CONF_UNSET_PTR;
+
+  conf->filename = NGX_CONF_UNSET_PTR;
+
+  return conf;
+}
+
+// Merge srv conf
+static char * ngx_http_ua_parse_merge_srv_conf(ngx_conf_t *cf, void *parent, void *child)
+{
+  ngx_http_ua_parse_srv_conf_t *prev = parent;
+  ngx_http_ua_parse_srv_conf_t *this = child;
+
+  ngx_conf_merge_ptr_value(this->devices, prev->devices, NGX_CONF_UNSET_PTR);
+  ngx_conf_merge_ptr_value(this->browsers, prev->browsers, NGX_CONF_UNSET_PTR);
+  ngx_conf_merge_ptr_value(this->os, prev->os, NGX_CONF_UNSET_PTR);
+  ngx_conf_merge_ptr_value(this->brands, prev->brands, NGX_CONF_UNSET_PTR);
+  ngx_conf_merge_ptr_value(this->models, prev->models, NGX_CONF_UNSET_PTR);
+
+  ngx_conf_merge_ptr_value(this->filename, prev->filename, NGX_CONF_UNSET_PTR);
+
+  return NGX_CONF_OK;
+}
+
 // Create loc conf
 static void * ngx_http_ua_parse_create_loc_conf(ngx_conf_t *cf)
 {
@@ -261,7 +313,7 @@ static ngx_int_t ngx_http_ua_parse_kind_variable(ngx_http_request_t *r,
 	ngx_http_variable_value_t device, os;
 	ngx_regex_t *mobileKind, *tabletKind;
 
-	upcf = ngx_http_get_module_main_conf(r, ngx_http_ua_parse_module);
+	upcf = ngx_http_get_module_srv_conf(r, ngx_http_ua_parse_module);
   loc_conf = ngx_http_get_module_loc_conf(r, ngx_http_ua_parse_module);
   if (!loc_conf->enabled) {
     v->valid = 0;
@@ -309,7 +361,7 @@ static ngx_int_t ngx_http_ua_parse_kind_variable(ngx_http_request_t *r,
 static ngx_int_t ngx_http_ua_parse_variable(ngx_http_request_t *r,
     ngx_http_variable_value_t *v, uintptr_t data)
 {
-    ngx_http_ua_parse_mod_conf_t *upcf;
+    ngx_http_ua_parse_srv_conf_t *upcf;
     ngx_http_ua_parse_loc_conf_t *loc_conf;
     ngx_uint_t n, i, captures_amount, replacement_len = 0;
     ngx_http_ua_parse_elem_t *ptr, *cur;
@@ -318,7 +370,7 @@ static ngx_int_t ngx_http_ua_parse_variable(ngx_http_request_t *r,
     ngx_str_t str;
     u_char *p, *foundStr;
 
-    upcf = ngx_http_get_module_main_conf(r, ngx_http_ua_parse_module);
+    upcf = ngx_http_get_module_srv_conf(r, ngx_http_ua_parse_module);
     loc_conf = ngx_http_get_module_loc_conf(r, ngx_http_ua_parse_module);
     v->valid = 0;
     if (!loc_conf->enabled) {
@@ -484,13 +536,13 @@ static ngx_array_t * ngx_http_ua_parse_load_from_json(ngx_conf_t *cf, cJSON *cur
 	for (i = 0; i < arraySize; i++) {
 		arr = cJSON_GetArrayItem(current, i);
 		elem = ngx_array_push(lst);
+    ngx_memzero(elem, sizeof(ngx_http_ua_parse_elem_t));
 		if (elem == NULL) {
 			goto failed;
 		}
-        str = ngx_http_ua_copy_json(cJSON_GetObjectItem(arr, "regex"), cf);
+    str = ngx_http_ua_copy_json(cJSON_GetObjectItem(arr, "regex"), cf);
 
-		elem->rgc = ngx_calloc(sizeof(ngx_regex_compile_t), cf->log);
-		ngx_memzero(elem->rgc, sizeof(ngx_regex_compile_t));
+    elem->rgc = ngx_pcalloc(cf->pool, sizeof(ngx_regex_compile_t));
 
 		elem->rgc->pattern = *str;
 		elem->rgc->pool = cf->pool;
@@ -514,7 +566,7 @@ static char *
 ngx_http_ua_parse_list(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 {
     ngx_fd_t        fd = NGX_INVALID_FILE;
-    ngx_str_t       *value;
+    ngx_str_t       *value, *filename;
     u_char          *regexFile;
     char            *buf = NULL;
     size_t          len;
@@ -522,21 +574,29 @@ ngx_http_ua_parse_list(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     off_t           size;
     char*           rc;
     cJSON           *root = NULL;
-    ngx_http_ua_parse_mod_conf_t    *upcf = conf;
+    ngx_http_ua_parse_srv_conf_t    *upcf = conf;
 
     rc = NGX_CONF_ERROR;
 
-    if (upcf->devices) {
-        return "duplicate!";
-    }
-
     value = cf->args->elts;
     regexFile = (u_char*)value[1].data;
+
+    if (upcf->filename != NGX_CONF_UNSET_PTR) {
+      // file already present here
+      rc = NGX_CONF_OK;
+      goto failed;
+    } else {
+      filename = ngx_pcalloc(cf->pool, sizeof(ngx_str_t));
+      filename->len = ngx_strlen(regexFile) + 1;
+      filename->data = ngx_pcalloc(cf->pool, filename->len);
+      upcf->filename = filename;
+    }
 
     fd = ngx_open_file(regexFile, NGX_FILE_RDONLY, NGX_FILE_OPEN, 0);
     if (fd == NGX_INVALID_FILE) {
         ngx_log_error(NGX_LOG_CRIT, cf->log, ngx_errno,
                       ngx_open_file_n " \"%s\" failed", regexFile);
+        goto failed;
     }
 
     if (ngx_fd_info(fd, &fi) == NGX_FILE_ERROR) {
@@ -558,16 +618,17 @@ ngx_http_ua_parse_list(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     	goto failed;
     }
 
-
     root = cJSON_Parse(buf);
 
-    // OS
-    // ngx_http_ua_parse_elem_t
+    if (!root) {
+      goto failed;
+    }
+
     upcf->os = ngx_http_ua_parse_load_from_json(cf, cJSON_GetObjectItem(root, "os"));
     upcf->devices = ngx_http_ua_parse_load_from_json(cf, cJSON_GetObjectItem(root, "devices"));
     upcf->browsers = ngx_http_ua_parse_load_from_json(cf, cJSON_GetObjectItem(root, "browsers"));
     upcf->brands = ngx_http_ua_parse_load_from_json(cf, cJSON_GetObjectItem(root, "brands"));
-    upcf->models= ngx_http_ua_parse_load_from_json(cf, cJSON_GetObjectItem(root, "models"));
+    upcf->models = ngx_http_ua_parse_load_from_json(cf, cJSON_GetObjectItem(root, "models"));
 
     rc = NGX_CONF_OK;
 
@@ -607,7 +668,7 @@ ngx_http_ua_parse_add_variables(ngx_conf_t *cf)
 static void
 ngx_http_ua_parse_cleanup(void *data)
 {
-    ngx_http_ua_parse_mod_conf_t  *upcf = data;
+    ngx_http_ua_parse_srv_conf_t  *upcf = data;
 
     if (upcf->devices) {
         ngx_array_destroy(upcf->devices);

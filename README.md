@@ -21,9 +21,9 @@ Idea came because [we at Brow.si](https://brow.si) searched for efficient way to
     http {
         ...
         log_format userinfo '$remote_addr of kind $ua_parse_device_kind ($ua_parse_device running $ua_parse_os, device brand $ua_parse_device_brand, device model $ua_parse_device_model) with $ua_parse_browser version $ua_parse_browser_ver';
-        uaparse_list /path/to/regexes.json;
         ...
         server {
+            uaparse_list /path/to/regexes.json;  # specify regexes file
             ...
             location ... {
                 ...
@@ -35,6 +35,14 @@ Idea came because [we at Brow.si](https://brow.si) searched for efficient way to
         }
     }
 ```
+
+### `uaparse_list` directive
+
+`uaparse_list` directive is used on server level to specify regexes file for given server. Argument given to this directive is path to file.
+
+### `uaparse_enable` directive
+
+`uaparse_enable` directive is used on server/location level to enable UA parsing on given server. *Please note* that it is off by default and must be enabled explicitly on server or location level, so regexes arrays are not iterated on every request.
 
 ## Credits
 * [`tobie/ua-parser`](https://github.com/tobie/ua-parser) for the regexes YAML
