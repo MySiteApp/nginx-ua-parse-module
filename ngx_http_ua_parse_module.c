@@ -16,9 +16,10 @@ typedef struct {
 } ngx_http_ua_parse_elem_t;
 
 typedef struct {
-    // Kind regexes
-    ngx_regex_t tabletKindRegex;
-    ngx_regex_t mobileKindRegex;
+  // Kind regexes
+  ngx_regex_t tabletKindRegex;
+  ngx_regex_t mobileKindRegex;
+  ngx_regex_t botKindRegex;
 } ngx_http_ua_parse_mod_conf_t;
 
 typedef struct {
@@ -225,6 +226,18 @@ ngx_http_ua_parse_init_mod_conf(ngx_conf_t *cf, void *conf)
   }
   ngx_memcpy(&upcf->tabletKindRegex, rgc.regex, sizeof(ngx_regex_t));
 
+  // Bot/crawler
+  rgc.pattern = (ngx_str_t)ngx_string("bot|crawler|spider|crawling");
+  rgc.options = NGX_REGEX_CASELESS;
+  rgc.pool = cf->pool;
+  rgc.err.len = NGX_MAX_CONF_ERRSTR;
+  rgc.err.data = errstr;
+  if (ngx_regex_compile(&rgc) != NGX_OK) {
+    ngx_log_error(NGX_LOG_ALERT, cf->log, ngx_errno,
+                  "ngx_regex_compile() \"%s\" failed", rgc.pattern.data);
+    goto failed;
+  }
+
   rc = NGX_CONF_OK;
 
  failed:
@@ -310,7 +323,7 @@ static ngx_int_t ngx_http_ua_parse_kind_variable(ngx_http_request_t *r,
 	ngx_http_ua_parse_mod_conf_t *upcf;
   ngx_http_ua_parse_loc_conf_t *loc_conf;
 	u_char *str;
-	ngx_regex_t *mobileKind, *tabletKind;
+	ngx_regex_t *mobileKind, *tabletKind, *botKind;
 
 	upcf = ngx_http_get_module_srv_conf(r, ngx_http_ua_parse_module);
   loc_conf = ngx_http_get_module_loc_conf(r, ngx_http_ua_parse_module);
@@ -322,6 +335,7 @@ static ngx_int_t ngx_http_ua_parse_kind_variable(ngx_http_request_t *r,
 
 	mobileKind = &upcf->mobileKindRegex;
 	tabletKind = &upcf->tabletKindRegex;
+  botKind = &upcf->botKindRegex;
 
 	str = (u_char*) "other";
 
@@ -330,15 +344,21 @@ static ngx_int_t ngx_http_ua_parse_kind_variable(ngx_http_request_t *r,
     goto not_found;
   }
 
-  // if device is mobile:
-  if (ngx_regex_exec(mobileKind, &(r->headers_in.user_agent->value), NULL, 0) >= 0) {
-    // and it is also a tablet...
-    if (ngx_regex_exec(tabletKind, &(r->headers_in.user_agent->value), NULL, 0) >= 0) {
-      str = (u_char*)"tablet";
-    } else { // it is just a mobile device
-      str = (u_char*)"mobile";
+  // first we check if it is a bot
+  if (ngx_regex_exec(botKind, &(r->headers_in.user_agent->value), NULL, 0) >= 0) {
+    str = (u_char*)"bot";
+  } else {
+    // the if the device is mobile
+    if (ngx_regex_exec(mobileKind, &(r->headers_in.user_agent->value), NULL, 0) >= 0) {
+      // and it is also a tablet...
+      if (ngx_regex_exec(tabletKind, &(r->headers_in.user_agent->value), NULL, 0) >= 0) {
+        str = (u_char*)"tablet";
+      } else { // it is just a mobile device
+        str = (u_char*)"mobile";
+      }
     }
   }
+
 
 	v->data = str;
 	v->len = ngx_strlen(v->data);
