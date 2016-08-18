@@ -55,8 +55,6 @@ static char * ngx_http_ua_parse_merge_srv_conf(ngx_conf_t *cf, void *prev, void 
 static void * ngx_http_ua_parse_create_loc_conf(ngx_conf_t *cf);
 static char * ngx_http_ua_parse_merge_loc_conf(ngx_conf_t *cf, void *prev, void *conf);
 
-static void ngx_http_ua_parse_cleanup(void *data);
-
 static ngx_array_t * ngx_http_ua_parse_load_from_json(ngx_conf_t *cf, cJSON *current);
 
 static ngx_command_t ngx_http_ua_parse_commands[] = {
@@ -247,21 +245,12 @@ ngx_http_ua_parse_init_mod_conf(ngx_conf_t *cf, void *conf)
 // Create srv conf
 static void * ngx_http_ua_parse_create_srv_conf(ngx_conf_t *cf)
 {
-  ngx_pool_cleanup_t     *cln;
   ngx_http_ua_parse_srv_conf_t *conf;
   conf = ngx_pcalloc(cf->pool, sizeof(ngx_http_ua_parse_srv_conf_t));
 
   if (conf == NULL) {
     return NGX_CONF_ERROR;
   }
-
-  cln = ngx_pool_cleanup_add(cf->pool, 0);
-  if (cln == NULL) {
-    return NULL;
-  }
-
-  cln->handler = ngx_http_ua_parse_cleanup;
-  cln->data = conf;
 
   conf->devices = NGX_CONF_UNSET_PTR;
   conf->browsers = NGX_CONF_UNSET_PTR;
@@ -681,31 +670,4 @@ ngx_http_ua_parse_add_variables(ngx_conf_t *cf)
     }
 
     return NGX_OK;
-}
-
-static void
-ngx_http_ua_parse_cleanup(void *data)
-{
-    ngx_http_ua_parse_srv_conf_t  *upcf = data;
-
-    if (upcf->devices) {
-        ngx_array_destroy(upcf->devices);
-    }
-
-    if (upcf->browsers) {
-        ngx_array_destroy(upcf->browsers);
-    }
-
-    if (upcf->os) {
-        ngx_array_destroy(upcf->os);
-    }
-
-    if (upcf->brands) {
-      ngx_array_destroy(upcf->brands);
-    }
-
-    if (upcf->models) {
-      ngx_array_destroy(upcf->models);
-    }
-
 }
