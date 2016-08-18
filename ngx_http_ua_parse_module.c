@@ -192,43 +192,43 @@ ngx_http_ua_parse_create_mod_conf(ngx_conf_t *cf)
 static char *
 ngx_http_ua_parse_init_mod_conf(ngx_conf_t *cf, void *conf)
 {
-    ngx_http_ua_parse_mod_conf_t    *upcf = conf;
-    ngx_regex_compile_t			rgc;
-    char						*rc;
-    u_char						errstr[NGX_MAX_CONF_ERRSTR];
+  ngx_http_ua_parse_mod_conf_t    *upcf = conf;
+  ngx_regex_compile_t			rgc;
+  char						*rc;
+  u_char						errstr[NGX_MAX_CONF_ERRSTR];
 
-    rc = NGX_CONF_ERROR;
+  rc = NGX_CONF_ERROR;
 
-    // Mobile
-	rgc.pattern = (ngx_str_t)ngx_string("iphone|ipod|mobile");
-	rgc.options = NGX_REGEX_CASELESS;
-	rgc.pool = cf->pool;
-	rgc.err.len = NGX_MAX_CONF_ERRSTR;
-	rgc.err.data = errstr;
-	if (ngx_regex_compile(&rgc) != NGX_OK) {
-		ngx_log_error(NGX_LOG_ALERT, cf->log, ngx_errno,
-								  "ngx_regex_compile() \"%s\" failed", rgc.pattern.data);
-		goto failed;
-	}
-	ngx_memcpy(&upcf->mobileKindRegex, rgc.regex, sizeof(ngx_regex_t));
+  // Mobile (regex taken from https://gist.github.com/dalethedeveloper/1503252)
+  rgc.pattern = (ngx_str_t)ngx_string("Mobile|iP(hone|od|ad)|Android|BlackBerry|IEMobile|Kindle|NetFront|Silk-Accelerated|(hpw|web)OS|Fennec|Minimo|Opera M(obi|ini)|Blazer|Dolfin|Dolphin|Skyfire|Zune");
+  rgc.options = NGX_REGEX_CASELESS;
+  rgc.pool = cf->pool;
+  rgc.err.len = NGX_MAX_CONF_ERRSTR;
+  rgc.err.data = errstr;
+  if (ngx_regex_compile(&rgc) != NGX_OK) {
+    ngx_log_error(NGX_LOG_ALERT, cf->log, ngx_errno,
+                  "ngx_regex_compile() \"%s\" failed", rgc.pattern.data);
+    goto failed;
+  }
+  ngx_memcpy(&upcf->mobileKindRegex, rgc.regex, sizeof(ngx_regex_t));
 
-	// Tablet
-	rgc.pattern = (ngx_str_t)ngx_string("ipad");
-	rgc.options = NGX_REGEX_CASELESS;
-	rgc.pool = cf->pool;
-	rgc.err.len = NGX_MAX_CONF_ERRSTR;
-	rgc.err.data = errstr;
-	if (ngx_regex_compile(&rgc) != NGX_OK) {
-		ngx_log_error(NGX_LOG_ALERT, cf->log, ngx_errno,
-		                          "ngx_regex_compile() \"%s\" failed", rgc.pattern.data);
-		goto failed;
-	}
-	ngx_memcpy(&upcf->tabletKindRegex, rgc.regex, sizeof(ngx_regex_t));
+  // Tablet (regex taken from https://gist.github.com/dalethedeveloper/1503252)
+  rgc.pattern = (ngx_str_t)ngx_string("(tablet|ipad|playbook|silk)|(android(?!.*mobile))");
+  rgc.options = NGX_REGEX_CASELESS;
+  rgc.pool = cf->pool;
+  rgc.err.len = NGX_MAX_CONF_ERRSTR;
+  rgc.err.data = errstr;
+  if (ngx_regex_compile(&rgc) != NGX_OK) {
+    ngx_log_error(NGX_LOG_ALERT, cf->log, ngx_errno,
+                  "ngx_regex_compile() \"%s\" failed", rgc.pattern.data);
+    goto failed;
+  }
+  ngx_memcpy(&upcf->tabletKindRegex, rgc.regex, sizeof(ngx_regex_t));
 
-	rc = NGX_CONF_OK;
+  rc = NGX_CONF_OK;
 
-failed:
-	return rc;
+ failed:
+  return rc;
 }
 
 // Create srv conf
@@ -310,7 +310,6 @@ static ngx_int_t ngx_http_ua_parse_kind_variable(ngx_http_request_t *r,
 	ngx_http_ua_parse_mod_conf_t *upcf;
   ngx_http_ua_parse_loc_conf_t *loc_conf;
 	u_char *str;
-	ngx_http_variable_value_t device, os;
 	ngx_regex_t *mobileKind, *tabletKind;
 
 	upcf = ngx_http_get_module_srv_conf(r, ngx_http_ua_parse_module);
@@ -326,33 +325,32 @@ static ngx_int_t ngx_http_ua_parse_kind_variable(ngx_http_request_t *r,
 
 	str = (u_char*) "other";
 
-	ngx_http_ua_parse_variable(r, &os, NGX_UA_PARSE_OS_FAMILY);
-	if (os.valid == 1) {
-		if (ngx_strstr(os.data, "iOS") != NULL) {
-			ngx_http_ua_parse_variable(r, &device, NGX_UA_PARSE_DEVICE_FAMILY);
-			if (device.valid == 1) {
-				// In ios, we check the device
-				if (ngx_regex_exec(mobileKind, &device, NULL, 0) >= 0) { // We can use 'device' as ngx_string_t, as ngx_http_variable_value_t shares ->len and ->data
-					str = (u_char*)"mobile";
-				} else if (ngx_regex_exec(tabletKind, &device, NULL, 0) >= 0) {
-					str = (u_char*)"tablet";
-				}
-			}
-		} else if (ngx_strstr(os.data, "Android") != NULL) {
-			// In android - we check the UA for "mobile"
-			if (ngx_regex_exec(mobileKind, &(r->headers_in.user_agent->value), NULL, 0) >= 0) {
-				str = (u_char*)"mobile";
-			} else {
-				str = (u_char*)"tablet";
-			}
-		}
-	}
+  if (!r->headers_in.user_agent) {
+    v->valid = 0;
+    goto not_found;
+  }
+
+  // if device is mobile:
+  if (ngx_regex_exec(mobileKind, &(r->headers_in.user_agent->value), NULL, 0) >= 0) {
+    // and it is also a tablet...
+    if (ngx_regex_exec(tabletKind, &(r->headers_in.user_agent->value), NULL, 0) >= 0) {
+      str = (u_char*)"tablet";
+    } else { // it is just a mobile device
+      str = (u_char*)"mobile";
+    }
+  }
 
 	v->data = str;
 	v->len = ngx_strlen(v->data);
 	v->valid = 1;
 	v->no_cacheable = 0;
 	v->not_found = 0;
+
+ not_found:
+
+	if (v->valid != 1) {
+		v->not_found = 1;
+	}
 
 	return NGX_OK;
 }
