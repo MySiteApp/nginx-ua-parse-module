@@ -17,9 +17,9 @@ typedef struct {
 
 typedef struct {
   // Kind regexes
-  ngx_regex_t tabletKindRegex;
-  ngx_regex_t mobileKindRegex;
-  ngx_regex_t botKindRegex;
+  ngx_regex_compile_t *tabletKindRegex;
+  ngx_regex_compile_t *mobileKindRegex;
+  ngx_regex_compile_t *botKindRegex;
 } ngx_http_ua_parse_mod_conf_t;
 
 typedef struct {
@@ -192,47 +192,47 @@ static char *
 ngx_http_ua_parse_init_mod_conf(ngx_conf_t *cf, void *conf)
 {
   ngx_http_ua_parse_mod_conf_t    *upcf = conf;
-  ngx_regex_compile_t			rgc;
   char						*rc;
   u_char						errstr[NGX_MAX_CONF_ERRSTR];
 
   rc = NGX_CONF_ERROR;
 
   // Mobile (regex taken from https://gist.github.com/dalethedeveloper/1503252)
-  rgc.pattern = (ngx_str_t)ngx_string("Mobile|iP(hone|od|ad)|Android|BlackBerry|IEMobile|Kindle|NetFront|Silk-Accelerated|(hpw|web)OS|Fennec|Minimo|Opera M(obi|ini)|Blazer|Dolfin|Dolphin|Skyfire|Zune");
-  rgc.options = NGX_REGEX_CASELESS;
-  rgc.pool = cf->pool;
-  rgc.err.len = NGX_MAX_CONF_ERRSTR;
-  rgc.err.data = errstr;
-  if (ngx_regex_compile(&rgc) != NGX_OK) {
+  upcf->mobileKindRegex = ngx_pcalloc(cf->pool, sizeof(ngx_regex_compile_t));
+  upcf->mobileKindRegex->pattern = (ngx_str_t)ngx_string("Mobile|iP(hone|od|ad)|Android|BlackBerry|IEMobile|Kindle|NetFront|Silk-Accelerated|(hpw|web)OS|Fennec|Minimo|Opera M(obi|ini)|Blazer|Dolfin|Dolphin|Skyfire|Zune");
+  upcf->mobileKindRegex->options = NGX_REGEX_CASELESS;
+  upcf->mobileKindRegex->pool = cf->pool;
+  upcf->mobileKindRegex->err.len = NGX_MAX_CONF_ERRSTR;
+  upcf->mobileKindRegex->err.data = errstr;
+  if (ngx_regex_compile(upcf->mobileKindRegex) != NGX_OK) {
     ngx_log_error(NGX_LOG_ALERT, cf->log, ngx_errno,
-                  "ngx_regex_compile() \"%s\" failed", rgc.pattern.data);
+                  "ngx_regex_compile() \"%s\" failed", upcf->mobileKindRegex->pattern.data);
     goto failed;
   }
-  ngx_memcpy(&upcf->mobileKindRegex, rgc.regex, sizeof(ngx_regex_t));
 
   // Tablet (regex taken from https://gist.github.com/dalethedeveloper/1503252)
-  rgc.pattern = (ngx_str_t)ngx_string("(tablet|ipad|playbook|silk)|(android(?!.*mobile))");
-  rgc.options = NGX_REGEX_CASELESS;
-  rgc.pool = cf->pool;
-  rgc.err.len = NGX_MAX_CONF_ERRSTR;
-  rgc.err.data = errstr;
-  if (ngx_regex_compile(&rgc) != NGX_OK) {
+  upcf->tabletKindRegex = ngx_pcalloc(cf->pool, sizeof(ngx_regex_compile_t));
+  upcf->tabletKindRegex->pattern = (ngx_str_t)ngx_string("(tablet|ipad|playbook|silk)|(android(?!.*mobile))");
+  upcf->tabletKindRegex->options = NGX_REGEX_CASELESS;
+  upcf->tabletKindRegex->pool = cf->pool;
+  upcf->tabletKindRegex->err.len = NGX_MAX_CONF_ERRSTR;
+  upcf->tabletKindRegex->err.data = errstr;
+  if (ngx_regex_compile(upcf->tabletKindRegex) != NGX_OK) {
     ngx_log_error(NGX_LOG_ALERT, cf->log, ngx_errno,
-                  "ngx_regex_compile() \"%s\" failed", rgc.pattern.data);
+                  "ngx_regex_compile() \"%s\" failed", upcf->tabletKindRegex->pattern.data);
     goto failed;
   }
-  ngx_memcpy(&upcf->tabletKindRegex, rgc.regex, sizeof(ngx_regex_t));
 
   // Bot/crawler
-  rgc.pattern = (ngx_str_t)ngx_string("bot|crawler|spider|crawling");
-  rgc.options = NGX_REGEX_CASELESS;
-  rgc.pool = cf->pool;
-  rgc.err.len = NGX_MAX_CONF_ERRSTR;
-  rgc.err.data = errstr;
-  if (ngx_regex_compile(&rgc) != NGX_OK) {
+  upcf->botKindRegex = ngx_pcalloc(cf->pool, sizeof(ngx_regex_compile_t));
+  upcf->botKindRegex->pattern = (ngx_str_t)ngx_string("bot|crawler|spider|crawling");
+  upcf->botKindRegex->options = NGX_REGEX_CASELESS;
+  upcf->botKindRegex->pool = cf->pool;
+  upcf->botKindRegex->err.len = NGX_MAX_CONF_ERRSTR;
+  upcf->botKindRegex->err.data = errstr;
+  if (ngx_regex_compile(upcf->botKindRegex) != NGX_OK) {
     ngx_log_error(NGX_LOG_ALERT, cf->log, ngx_errno,
-                  "ngx_regex_compile() \"%s\" failed", rgc.pattern.data);
+                  "ngx_regex_compile() \"%s\" failed", upcf->botKindRegex->pattern.data);
     goto failed;
   }
 
@@ -312,19 +312,15 @@ static ngx_int_t ngx_http_ua_parse_kind_variable(ngx_http_request_t *r,
 	ngx_http_ua_parse_mod_conf_t *upcf;
   ngx_http_ua_parse_loc_conf_t *loc_conf;
 	u_char *str;
-	ngx_regex_t *mobileKind, *tabletKind, *botKind;
+	ngx_regex_compile_t *mobileKind, *tabletKind, *botKind;
 
-	upcf = ngx_http_get_module_srv_conf(r, ngx_http_ua_parse_module);
+	upcf = ngx_http_get_module_main_conf(r, ngx_http_ua_parse_module);
   loc_conf = ngx_http_get_module_loc_conf(r, ngx_http_ua_parse_module);
   if (!loc_conf->enabled) {
     v->valid = 0;
     v->not_found = 1;
     return NGX_OK;
   }
-
-	mobileKind = &upcf->mobileKindRegex;
-	tabletKind = &upcf->tabletKindRegex;
-  botKind = &upcf->botKindRegex;
 
 	str = (u_char*) "other";
 
@@ -334,13 +330,13 @@ static ngx_int_t ngx_http_ua_parse_kind_variable(ngx_http_request_t *r,
   }
 
   // first we check if it is a bot
-  if (ngx_regex_exec(botKind, &(r->headers_in.user_agent->value), NULL, 0) >= 0) {
+  if (ngx_regex_exec(upcf->botKindRegex->regex, &(r->headers_in.user_agent->value), NULL, 0) >= 0) {
     str = (u_char*)"bot";
   } else {
     // the if the device is mobile
-    if (ngx_regex_exec(mobileKind, &(r->headers_in.user_agent->value), NULL, 0) >= 0) {
+    if (ngx_regex_exec(upcf->mobileKindRegex->regex, &(r->headers_in.user_agent->value), NULL, 0) >= 0) {
       // and it is also a tablet...
-      if (ngx_regex_exec(tabletKind, &(r->headers_in.user_agent->value), NULL, 0) >= 0) {
+      if (ngx_regex_exec(upcf->tabletKindRegex->regex, &(r->headers_in.user_agent->value), NULL, 0) >= 0) {
         str = (u_char*)"tablet";
       } else { // it is just a mobile device
         str = (u_char*)"mobile";
@@ -384,6 +380,7 @@ static ngx_int_t ngx_http_ua_parse_variable(ngx_http_request_t *r,
       v->not_found = 1;
       return NGX_OK;
     }
+
 
     switch (data) {
     case NGX_UA_PARSE_DEVICE_FAMILY:
