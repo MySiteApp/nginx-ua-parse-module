@@ -44,5 +44,9 @@ Idea came because [we at Brow.si](https://brow.si) searched for efficient way to
 
 `uaparse_enable` directive is used on server/location level to enable UA parsing on given server. *Please note* that it is off by default and must be enabled explicitly on server or location level, so regexes arrays are not iterated on every request.
 
+### `uaparse_var` directive
+
+`uaparse_var` directive is used to explicitly specify the variable UA will be taken from.
+
 ## Credits
 * [`tobie/ua-parser`](https://github.com/tobie/ua-parser) for the regexes YAML
