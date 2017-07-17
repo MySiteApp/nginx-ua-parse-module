@@ -10,9 +10,9 @@
 #include "cJSON/cJSON.h"
 
 typedef struct {
-	ngx_regex_compile_t *rgc;
-	ngx_str_t			*replacement;
-  ngx_str_t     *ver_replacement;
+  ngx_regex_compile_t *rgc;
+  ngx_str_t *replacement;
+  ngx_str_t *ver_replacement;
 } ngx_http_ua_parse_elem_t;
 
 typedef struct {
@@ -33,7 +33,9 @@ typedef struct {
 
 typedef struct {
     ngx_flag_t enabled;
+    ngx_str_t ua_value;
 } ngx_http_ua_parse_loc_conf_t;
+
 
 static ngx_str_t *ngx_http_ua_copy_json(cJSON *jsonSrc, ngx_conf_t *cf);
 
@@ -71,6 +73,14 @@ static ngx_command_t ngx_http_ua_parse_commands[] = {
       NGX_HTTP_LOC_CONF_OFFSET,
       offsetof(ngx_http_ua_parse_loc_conf_t, enabled),
       NULL },
+
+    { ngx_string("uaparse_var"),
+      NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
+      ngx_conf_set_str_slot,
+      NGX_HTTP_LOC_CONF_OFFSET,
+      offsetof(ngx_http_ua_parse_loc_conf_t, ua_value),
+      NULL },
+
 
     ngx_null_command
 };
@@ -290,6 +300,7 @@ static void * ngx_http_ua_parse_create_loc_conf(ngx_conf_t *cf)
   }
 
   conf->enabled = NGX_CONF_UNSET;
+  //conf->ua_value = NGX_CONF_UNSET_PTR;
 
   return conf;
 }
@@ -300,7 +311,8 @@ static char * ngx_http_ua_parse_merge_loc_conf(ngx_conf_t *cf, void *parent, voi
   ngx_http_ua_parse_loc_conf_t *prev = parent;
   ngx_http_ua_parse_loc_conf_t *this = child;
 
-  ngx_conf_merge_value(this->enabled, prev->enabled, 0);
+  ngx_conf_merge_value(this->enabled, prev->enabled, NGX_CONF_UNSET);
+  ngx_conf_merge_str_value(this->ua_value, prev->ua_value, "");
 
   return NGX_CONF_OK;
 }
@@ -312,7 +324,10 @@ static ngx_int_t ngx_http_ua_parse_kind_variable(ngx_http_request_t *r,
 	ngx_http_ua_parse_mod_conf_t *upcf;
   ngx_http_ua_parse_loc_conf_t *loc_conf;
 	u_char *str;
-	ngx_regex_compile_t *mobileKind, *tabletKind, *botKind;
+  ngx_str_t ua_value = {.data = NULL, .len = 0};
+  ngx_str_t ua_var_name = {.data = NULL, .len = 0};
+  ngx_int_t key;
+  ngx_http_variable_value_t *vv;
 
 	upcf = ngx_http_get_module_main_conf(r, ngx_http_ua_parse_module);
   loc_conf = ngx_http_get_module_loc_conf(r, ngx_http_ua_parse_module);
@@ -324,26 +339,43 @@ static ngx_int_t ngx_http_ua_parse_kind_variable(ngx_http_request_t *r,
 
 	str = (u_char*) "other";
 
-  if (!r->headers_in.user_agent) {
+  if (loc_conf->ua_value.len > 0) {
+    if (loc_conf->ua_value.data[0] == '$') {
+      ua_var_name.data = loc_conf->ua_value.data + 1;
+      ua_var_name.len = loc_conf->ua_value.len - 1;
+      key = ngx_hash_key(ua_var_name.data, ua_var_name.len);
+      vv = ngx_http_get_variable(r, &ua_var_name, key);
+      if (vv == NULL || vv->not_found) {
+        return NGX_ERROR;
+      }
+      ua_value.data = vv->data;
+      ua_value.len = vv->len;
+    } else {
+      ua_value.data = loc_conf->ua_value.data;
+      ua_value.len = loc_conf->ua_value.len;
+    }
+  } else if (r->headers_in.user_agent) {
+    ua_value.data = r->headers_in.user_agent->value.data;
+    ua_value.len = r->headers_in.user_agent->value.len;
+  } else {
     v->valid = 0;
     goto not_found;
   }
 
   // first we check if it is a bot
-  if (ngx_regex_exec(upcf->botKindRegex->regex, &(r->headers_in.user_agent->value), NULL, 0) >= 0) {
+  if (ngx_regex_exec(upcf->botKindRegex->regex, &ua_value, NULL, 0) >= 0) {
     str = (u_char*)"bot";
   } else {
     // the if the device is mobile
-    if (ngx_regex_exec(upcf->mobileKindRegex->regex, &(r->headers_in.user_agent->value), NULL, 0) >= 0) {
+    if (ngx_regex_exec(upcf->mobileKindRegex->regex, &ua_value, NULL, 0) >= 0) {
       // and it is also a tablet...
-      if (ngx_regex_exec(upcf->tabletKindRegex->regex, &(r->headers_in.user_agent->value), NULL, 0) >= 0) {
+      if (ngx_regex_exec(upcf->tabletKindRegex->regex, &ua_value, NULL, 0) >= 0) {
         str = (u_char*)"tablet";
       } else { // it is just a mobile device
         str = (u_char*)"mobile";
       }
     }
   }
-
 
 	v->data = str;
 	v->len = ngx_strlen(v->data);
@@ -372,6 +404,10 @@ static ngx_int_t ngx_http_ua_parse_variable(ngx_http_request_t *r,
     ngx_array_t *lst;
     ngx_str_t str;
     u_char *p, *foundStr;
+    ngx_str_t ua_value;
+    ngx_str_t ua_var_name;
+    ngx_int_t key;
+    ngx_http_variable_value_t *vv;
 
     upcf = ngx_http_get_module_srv_conf(r, ngx_http_ua_parse_module);
     loc_conf = ngx_http_get_module_loc_conf(r, ngx_http_ua_parse_module);
@@ -412,6 +448,28 @@ static ngx_int_t ngx_http_ua_parse_variable(ngx_http_request_t *r,
         goto not_found;
     }
 
+    if (loc_conf->ua_value.len > 0) {
+      if (loc_conf->ua_value.data[0] == '$') {
+        ua_var_name.data = loc_conf->ua_value.data + 1;
+        ua_var_name.len = loc_conf->ua_value.len - 1;
+        key = ngx_hash_key(ua_var_name.data, ua_var_name.len);
+        vv = ngx_http_get_variable(r, &ua_var_name, key);
+        if (vv == NULL || vv->not_found) {
+          return NGX_ERROR;
+        }
+        ua_value.data = vv->data;
+        ua_value.len = vv->len;
+      } else {
+        ua_value.data = loc_conf->ua_value.data;
+        ua_value.len = loc_conf->ua_value.len;
+      }
+    } else if (r->headers_in.user_agent) {
+      ua_value.data = r->headers_in.user_agent->value.data;
+      ua_value.len = r->headers_in.user_agent->value.len;
+    } else {
+      goto not_found;
+    }
+
     if (!r->headers_in.user_agent) {
       goto not_found;
     }
@@ -427,26 +485,26 @@ static ngx_int_t ngx_http_ua_parse_variable(ngx_http_request_t *r,
           captures_amount = cur->rgc->captures;
         }
         captures = ngx_pcalloc(r->pool, n * sizeof(int));
-        rc = ngx_regex_exec(cur->rgc->regex, &r->headers_in.user_agent->value, captures, n);
+        rc = ngx_regex_exec(cur->rgc->regex, &ua_value, captures, n);
         if (rc < 0) {
         	continue;
         }
 
         // if we have 0 captures, we have no right to access captures[3], and captures[2] contain no meaningful info
         // so we just take the whole match (captures[1] - captures[0])
-        str.data = (u_char *) (r->headers_in.user_agent->value.data + captures[0]);
+        str.data = (u_char *) (ua_value.data + captures[0]);
         str.len = captures[1] - captures[0];
 
         // Match the first one (captures[2] is the start, captures[3] is the end) in most conditions
         if (captures_amount > 0 && (captures[3] - captures[2] < 0 && str.len > NGX_UA_PARSE_SIZE_THRESHOLD)) {
-          str.data = (u_char *) (r->headers_in.user_agent->value.data + captures[2]);
+          str.data = (u_char *) (ua_value.data + captures[2]);
           str.len = captures[3] - captures[2];
         }
 
         if ((data == NGX_UA_PARSE_BROWSER_VERSION || data == NGX_UA_PARSE_OS_VERSION) && cur->rgc->captures > 1) {
           while (captures_amount > 1) {
             if (captures[captures_amount * 2 + 1] != -1) {
-              str.data = (u_char *) (r->headers_in.user_agent->value.data + captures[4]);
+              str.data = (u_char *) (ua_value.data + captures[4]);
               str.len = captures[captures_amount * 2 + 1] - captures[4];
               break;
             } else {
@@ -459,7 +517,7 @@ static ngx_int_t ngx_http_ua_parse_variable(ngx_http_request_t *r,
         if (data == NGX_UA_PARSE_DEVICE_MODEL || data == NGX_UA_PARSE_DEVICE_BRAND) {
           while (captures_amount > 1) {
             if (captures[captures_amount * 2 + 1] != - 1) {
-              str.data = (u_char *) (r->headers_in.user_agent->value.data + captures[2]);
+              str.data = (u_char *) (ua_value.data + captures[2]);
               str.len = captures[captures_amount * 2 + 1] - captures[2];
               break;
             } else {
