@@ -669,7 +669,7 @@ ngx_http_ua_parse_list(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     size = ngx_file_size(&fi);
 
     // TODO: this value is hardcoded. Is this really the only way to go? Slight changes to json db will definitely disturb the process
-    len = (off_t) 174781 > size ? (size_t) size : 174781;
+    len = size > (off_t) 256000 ? (size_t) size : 256000;
 
     buf = ngx_alloc(len, cf->log);
     if (buf == NULL) {
